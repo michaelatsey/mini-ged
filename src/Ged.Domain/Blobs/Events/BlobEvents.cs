@@ -1,0 +1,126 @@
+using Ged.Domain.Abstractions;
+
+namespace Ged.Domain.Blobs.Events;
+
+/// <summary>Raised when content is registered for the first time, with its initial location.</summary>
+/// <param name="BlobId">The content digest.</param>
+/// <param name="SizeBytes">The size of the content, in bytes.</param>
+/// <param name="LocationId">The initial location.</param>
+/// <param name="Provider">The storage backend holding it.</param>
+/// <param name="Bucket">The container within that backend.</param>
+/// <param name="Key">The object key within that container.</param>
+/// <param name="RegisteredBy">The actor that registered the content.</param>
+/// <param name="OccurredAt">The instant of the operation, in UTC.</param>
+public sealed record BlobRegistered(
+    string BlobId,
+    long SizeBytes,
+    Guid LocationId,
+    string Provider,
+    string Bucket,
+    string Key,
+    string RegisteredBy,
+    DateTimeOffset OccurredAt) : GedDomainEvent(OccurredAt);
+
+/// <summary>Raised when a copy of the content is registered on another backend.</summary>
+/// <param name="BlobId">The content digest.</param>
+/// <param name="LocationId">The new location.</param>
+/// <param name="Provider">The storage backend holding the copy.</param>
+/// <param name="Bucket">The container within that backend.</param>
+/// <param name="Key">The object key within that container.</param>
+/// <param name="State">The role the copy starts in.</param>
+/// <param name="OccurredAt">The instant of the operation, in UTC.</param>
+public sealed record BlobLocationAdded(
+    string BlobId,
+    Guid LocationId,
+    string Provider,
+    string Bucket,
+    string Key,
+    string State,
+    DateTimeOffset OccurredAt) : GedDomainEvent(OccurredAt);
+
+/// <summary>Raised when a copy has been confirmed to match the blob's digest.</summary>
+/// <param name="BlobId">The content digest.</param>
+/// <param name="LocationId">The verified location.</param>
+/// <param name="Provider">The storage backend holding it.</param>
+/// <param name="OccurredAt">The instant of the operation, in UTC.</param>
+public sealed record BlobLocationVerified(
+    string BlobId,
+    Guid LocationId,
+    string Provider,
+    DateTimeOffset OccurredAt) : GedDomainEvent(OccurredAt);
+
+/// <summary>
+/// Raised when reads are switched to a different location.
+/// </summary>
+/// <param name="BlobId">The content digest.</param>
+/// <param name="PreviousLocationId">The location that was serving reads, now legacy.</param>
+/// <param name="NewLocationId">The location now serving reads.</param>
+/// <param name="PreviousProvider">The backend reads came from.</param>
+/// <param name="NewProvider">The backend reads now go to.</param>
+/// <param name="OccurredAt">The instant of the operation, in UTC.</param>
+/// <remarks>
+/// This is the event a provider migration is built on. Consumers holding cached read URLs must
+/// invalidate them; nothing else changes, because the content itself is identical by definition.
+/// </remarks>
+public sealed record BlobPrimarySwitched(
+    string BlobId,
+    Guid PreviousLocationId,
+    Guid NewLocationId,
+    string PreviousProvider,
+    string NewProvider,
+    DateTimeOffset OccurredAt) : GedDomainEvent(OccurredAt);
+
+/// <summary>Raised when a superseded location is removed from the blob.</summary>
+/// <param name="BlobId">The content digest.</param>
+/// <param name="LocationId">The location removed.</param>
+/// <param name="Provider">The backend it pointed at.</param>
+/// <param name="Bucket">The container it pointed at.</param>
+/// <param name="Key">The object key it pointed at.</param>
+/// <param name="OccurredAt">The instant of the operation, in UTC.</param>
+/// <remarks>
+/// Removing the record is not deleting the object. A consumer is responsible for the physical
+/// delete, and it carries the address precisely so it can perform it.
+/// </remarks>
+public sealed record BlobLocationRemoved(
+    string BlobId,
+    Guid LocationId,
+    string Provider,
+    string Bucket,
+    string Key,
+    DateTimeOffset OccurredAt) : GedDomainEvent(OccurredAt);
+
+/// <summary>Raised when no live reference to the content could be found.</summary>
+/// <param name="BlobId">The content digest.</param>
+/// <param name="OrphanSince">When the retention window started.</param>
+/// <param name="OccurredAt">The instant of the operation, in UTC.</param>
+/// <remarks>
+/// A candidate, not a verdict. Nothing is removed, and a new document referencing the same content
+/// reactivates the blob before the window elapses.
+/// </remarks>
+public sealed record BlobMarkedOrphanCandidate(
+    string BlobId,
+    DateTimeOffset OrphanSince,
+    DateTimeOffset OccurredAt) : GedDomainEvent(OccurredAt);
+
+/// <summary>Raised when a live reference appears again before the retention window elapses.</summary>
+/// <param name="BlobId">The content digest.</param>
+/// <param name="OccurredAt">The instant of the operation, in UTC.</param>
+public sealed record BlobReactivated(
+    string BlobId,
+    DateTimeOffset OccurredAt) : GedDomainEvent(OccurredAt);
+
+/// <summary>Raised once the content has been removed from every backend.</summary>
+/// <param name="BlobId">The content digest.</param>
+/// <param name="SizeBytes">The size that was reclaimed, in bytes.</param>
+/// <param name="OrphanSince">When the retention window started.</param>
+/// <param name="PurgedBy">The actor — usually a collector — that performed the purge.</param>
+/// <param name="OccurredAt">The instant of the operation, in UTC.</param>
+/// <remarks>
+/// Records a removal that already happened; it does not request one. Terminal state.
+/// </remarks>
+public sealed record BlobPurged(
+    string BlobId,
+    long SizeBytes,
+    DateTimeOffset OrphanSince,
+    string PurgedBy,
+    DateTimeOffset OccurredAt) : GedDomainEvent(OccurredAt);
