@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Ged.Core</RootNamespace>
+    <IsTrimmable>true</IsTrimmable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Ged.Domain/Ged.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

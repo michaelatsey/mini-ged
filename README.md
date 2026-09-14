@@ -8,11 +8,17 @@ adapter. The domain is being settled first, on purpose — the shape of everythi
 from the decisions made here.
 
 ```
-Ged.Domain          ← this repository, today
-Ged.Application     ← vertical slices, later
-Ged.Adapters.*      ← EF Core, Dapper, MinIO, later
-Ged.Api             ← later
+Ged.Domain                  aggregates, rules, events        ← verified
+Ged.Core                    technical ports                  ← verified
+Ged.Adapters.Persistence    EF Core write side, Dapper reads ← not yet compiled
+Ged.Migrations              DbUp: the schema's only owner    ← not yet compiled
+Ged.Application             vertical slices                  ← next
+Ged.Api                                                      ← later
 ```
+
+EF Core, Npgsql, Dapper and DbUp were unreachable when the persistence layer was written, so it has
+not been through a compiler. `docs/microkit-deviations.md` lists the four mapping decisions to check
+first.
 
 ## The idea in three sentences
 
@@ -120,9 +126,29 @@ docs/                    deviations from MicroKit, and what the domain cannot gu
 ```bash
 dotnet build -c Release
 dotnet test
+
+# apply the schema (DbUp owns it; EF Core never generates it)
+dotnet run --project src/Ged.Migrations -- "Host=localhost;Database=ged;Username=ged;Password=ged"
+dotnet run --project src/Ged.Migrations -- "$GED_DB" --what-if   # list pending scripts
 ```
 
 `Release` builds with `TreatWarningsAsErrors`, so the build is the first reviewer.
+
+## Who owns what
+
+| Concern | Owner |
+|---|---|
+| The schema | `Ged.Migrations` (DbUp), and nothing else |
+| Invariants during a mutation | EF Core, through the aggregates |
+| Screens and projections | Dapper, in the slice that needs them |
+| Publishing events | the outbox, written in the same transaction |
+
+Two tools able to change the same schema will eventually disagree, so EF Core has no migrations
+folder and `Database.Migrate` is never called.
+
+Some guarantees exist in both places on purpose. `ux_blob_location_single_primary` repeats an
+invariant the aggregate already enforces: the aggregate covers one transaction, the index covers
+two concurrent ones, and neither covers the other's case.
 
 ## Reading order
 
