@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Ged.Domain</RootNamespace>
+    <IsTrimmable>true</IsTrimmable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MicroKit.Domain" />
+    <PackageReference Include="MicroKit.Persistence.Abstractions" />
+  </ItemGroup>
+
+</Project>
