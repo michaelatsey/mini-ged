@@ -112,14 +112,7 @@ rejects the read-only projection, since `AsReadOnly()` allocates a new wrapper o
 an owned type nested inside the owned `BlobLocation` collection. Nesting owned types is supported;
 this particular combination is the least-travelled path in the whole mapping.
 
-## Bet 4 — configuration instantiation with a constructor argument
-
-`GedDbContext.OnModelCreating` passes `IPersistenceProvider` to configurations that declare a
-constructor taking one, via the factory overload of `ApplyConfigurationsFromAssembly`. If that
-overload does not behave as expected, the fallback is to call each configuration explicitly rather
-than scanning the assembly.
-
-## Bet 5 — two state mutations in one `SaveChanges`
+## Bet 4 — two state mutations in one `SaveChanges`
 
 `PromoteToPrimary` demotes one location and promotes another. Both must land in the same
 transaction, or the unique index `ux_blob_location_single_primary` rejects the write.

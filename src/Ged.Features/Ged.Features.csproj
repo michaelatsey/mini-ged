@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Ged.Features</RootNamespace>
+  </PropertyGroup>
+
+  <!--
+    The feature layer depends on ports and the domain, never on an adapter. No EF Core, no Npgsql,
+    no MinIO: a slice cannot reach a database driver even by accident, and swapping an adapter
+    cannot reach back into a use case.
+
+    Read handlers use System.Data.Common directly rather than a micro-ORM. Two reasons: it keeps the
+    feature layer dependency-free and trimming-friendly, and the column mapping is explicit, so a
+    renamed column fails at the line that reads it instead of silently yielding a default.
+  -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MicroKit.Persistence.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Ged.Core/Ged.Core.csproj" />
+    <ProjectReference Include="../Ged.Domain/Ged.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

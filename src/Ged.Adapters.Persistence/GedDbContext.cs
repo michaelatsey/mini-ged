@@ -1,9 +1,9 @@
-using Ged.Adapters.Persistence.Providers;
+using Ged.Adapters.Persistence.Configurations;
 using Ged.Adapters.Persistence.Outbox;
+using Ged.Adapters.Persistence.Providers;
 using Ged.Domain.Blobs;
 using Ged.Domain.Documents;
 using Ged.Domain.Folders;
-using System.Reflection;
 
 namespace Ged.Adapters.Persistence;
 
@@ -49,13 +49,13 @@ public sealed class GedDbContext(
     {
         ArgumentNullException.ThrowIfNull(modelBuilder);
 
-        // The provider travels through the model builder so each configuration can ask for the
-        // engine-specific pieces without every configuration taking a constructor argument.
-        modelBuilder.ApplyConfigurationsFromAssembly(
-            Assembly.GetExecutingAssembly(),
-            type => type.GetConstructor([typeof(IPersistenceProvider)]) is { } ctor
-                ? ctor.Invoke([provider])
-                : Activator.CreateInstance(type));
+        // Written out rather than discovered by scanning the assembly. A configuration that was
+        // added but never applied is then a compile-time omission a reader can see, not a table
+        // that silently maps by convention — and nothing here has to be explained to a trimmer.
+        modelBuilder.ApplyConfiguration(new FolderConfiguration(provider));
+        modelBuilder.ApplyConfiguration(new DocumentConfiguration(provider));
+        modelBuilder.ApplyConfiguration(new BlobConfiguration(provider));
+        modelBuilder.ApplyConfiguration(new OutboxMessageConfiguration(provider));
 
         base.OnModelCreating(modelBuilder);
     }

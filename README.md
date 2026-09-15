@@ -14,8 +14,10 @@ Ged.Adapters.Persistence            provider-agnostic write side  ← not yet co
 Ged.Adapters.Persistence.PostgreSql xmin, SKIP LOCKED, jsonb       ← not yet compiled
 Ged.Adapters.Persistence.SqlServer  rowversion, READPAST, clustering ← not yet compiled
 Ged.Migrations                      DbUp, one script set per engine ← not yet compiled
-Ged.Application             vertical slices                  ← next
-Ged.Api                                                      ← later
+Ged.Adapters.Storage                registry, location resolver     ← verified
+Ged.Adapters.Storage.FileSystem     works with no MinIO, no Beys     ← verified
+Ged.Features                        vertical slices, endpoints      ← verified
+Ged.Api                             composition root                ← next
 ```
 
 EF Core, Npgsql, Dapper and DbUp were unreachable when the persistence layer was written, so it has
@@ -166,10 +168,43 @@ two concurrent ones, and neither covers the other's case.
 4. `src/Ged.Domain/Folders/FolderAncestry.cs` — how hierarchy rules stay inside the domain
 5. `docs/microkit-deviations.md` — the three shims and the upstream changes that remove them
 
+## Features
+
+Fourteen slices, each a folder holding its endpoint, its command or query, and its handler.
+Registration is explicit all the way down — `MapGedEndpoints()` calls one method per module, each
+module calls one per slice. No assembly scanning, no `IEndpoint` convention, no reflection: a reader
+finds every route by following three calls, the compiler catches a slice that was never wired, and
+nothing needs explaining to a trimmer.
+
+Writes go through a repository and EF Core, because they mutate an aggregate whose invariants must
+hold. Reads open a connection and run the SQL their screen needs, in the slice that needs it — a
+repository exists to reconstitute an aggregate for a rule, and the moment it gains a search method
+every slice starts reaching into it.
+
+```
+UploadDocument     content is written to storage BEFORE the transaction opens
+                   a failed commit then leaves a detectable orphan, not a ghost
+DeleteDocument     breaks a link; no code path from here reaches a deleted byte
+ReplicateBlobs     MIGRATING -> REPLICA -> PRIMARY -> LEGACY, a provider change
+                   as data transitions rather than a code change
+```
+
+## Storage
+
+`IObjectStorage` is deliberately poor — put, open, exists, copy, delete, list. Presigning is a
+separate capability interface, because an abstraction that assumes its richest implementation forces
+every other adapter to throw.
+
+`Ged.Adapters.Storage.FileSystem` is a real adapter, not a mock: the whole system runs on a plain
+directory, with no MinIO and no Beys. That matters beyond convenience — an abstraction with one
+implementation is an untested hypothesis, and the second adapter is what turns it into an
+abstraction.
+
 ## Status
 
-All three aggregates are implemented and the `Release` build is clean. Nothing above the domain is
-written yet.
+Domain, ports, storage adapters and features build clean in `Release`. The persistence adapters and
+the migration runner are written but not yet compiled, since their packages were unreachable when
+they were authored.
 
 ## License
 

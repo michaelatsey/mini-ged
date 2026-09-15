@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Ged.Adapters.Storage</RootNamespace>
+    <IsTrimmable>true</IsTrimmable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Ged.Core/Ged.Core.csproj" />
+  </ItemGroup>
+
+</Project>
