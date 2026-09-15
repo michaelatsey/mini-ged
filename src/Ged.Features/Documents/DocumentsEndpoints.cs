@@ -19,10 +19,10 @@ namespace Ged.Features.Documents;
 internal static class DocumentsEndpoints
 {
     /// <summary>Maps the document routes.</summary>
-    /// <param name="app">The route builder.</param>
-    public static void Map(IEndpointRouteBuilder app)
+    /// <param name="version">The versioned route group.</param>
+    public static void Map(RouteGroupBuilder version)
     {
-        var documents = app.MapGroup("/documents").WithTags("Documents");
+        var documents = version.MapGroup("/documents").WithTags("Documents");
 
         UploadDocumentEndpoint.Map(documents);
         AddDocumentVersionEndpoint.Map(documents);

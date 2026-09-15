@@ -11,7 +11,9 @@ internal static class UploadDocumentEndpoint
             .WithSummary("Creates a document from an uploaded file.")
             .DisableAntiforgery()
             .Produces<UploadDocumentResponse>(StatusCodes.Status201Created)
-            .ProducesProblem(StatusCodes.Status404NotFound);
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .RequireRateLimiting(GedPolicies.Content)
+            .WithRequestTimeout(GedPolicies.Content);
 
     private static async Task<IResult> HandleAsync(
         IFormFile file,

@@ -11,10 +11,10 @@ namespace Ged.Features.Folders;
 internal static class FoldersEndpoints
 {
     /// <summary>Maps the folder routes.</summary>
-    /// <param name="app">The route builder.</param>
-    public static void Map(IEndpointRouteBuilder app)
+    /// <param name="version">The versioned route group.</param>
+    public static void Map(RouteGroupBuilder version)
     {
-        var folders = app.MapGroup("/folders").WithTags("Folders");
+        var folders = version.MapGroup("/folders").WithTags("Folders");
 
         CreateFolderEndpoint.Map(folders);
         RenameFolderEndpoint.Map(folders);

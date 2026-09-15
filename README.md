@@ -17,7 +17,7 @@ Ged.Migrations                      DbUp, one script set per engine ← not yet 
 Ged.Adapters.Storage                registry, location resolver     ← verified
 Ged.Adapters.Storage.FileSystem     works with no MinIO, no Beys     ← verified
 Ged.Features                        vertical slices, endpoints      ← verified
-Ged.Api                             composition root                ← next
+Ged.Api                             composition root, versioned     ← not yet compiled
 ```
 
 EF Core, Npgsql, Dapper and DbUp were unreachable when the persistence layer was written, so it has
@@ -199,6 +199,16 @@ every other adapter to throw.
 directory, with no MinIO and no Beys. That matters beyond convenience — an abstraction with one
 implementation is an untested hypothesis, and the second adapter is what turns it into an
 abstraction.
+
+## API
+
+URL-segment versioning on `Asp.Versioning` 10, with one OpenAPI document per version and Scalar at
+`/scalar`. `AssumeDefaultVersionWhenUnspecified` is off and `ReportApiVersions` is on, so a client
+must state the version it wants and learns of a deprecation from its own traffic.
+
+Authorization denies by default, rate limiting partitions per identity, transfers are bounded by
+concurrency rather than by rate, and one `IExceptionHandler` translates domain failures so no
+endpoint contains a `try`. The reasoning behind each choice is in `docs/api.md`.
 
 ## Status
 

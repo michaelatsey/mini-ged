@@ -3,34 +3,34 @@ using Ged.Features.Folders;
 
 namespace Ged.Features;
 
-/// <summary>The single entry point the host calls to expose every feature route.</summary>
+/// <summary>Maps every feature module onto a route group supplied by the host.</summary>
 /// <remarks>
 /// <para>
 /// Registration is explicit all the way down: this method calls one per module, each module calls
-/// one per slice. No assembly scanning, no <c>IEndpoint</c> convention, no reflection.
+/// one per slice. No assembly scanning, no <c>IEndpoint</c> convention, no reflection. A reader
+/// finds every route by following three calls, the compiler catches a slice that was written but
+/// never wired, and nothing here needs explaining to a trimmer.
 /// </para>
 /// <para>
-/// The reason is not taste. A reader finds every route by following three method calls; the compiler
-/// catches a slice that was written but never wired; and nothing here needs to be explained to a
-/// trimmer or an AOT compiler. Auto-discovery would buy none of that and cost all of it.
-/// </para>
-/// <para>
-/// Decoupling comes from the direction of dependencies, not from how registration happens. The host
-/// knows this assembly; this assembly knows only ports and the domain.
+/// The group is a parameter rather than something this assembly builds. Which versions exist and
+/// how a client selects one — URL segment, header, query string — is a decision about the API's
+/// shape, and it belongs to the host that composes the application. This assembly keeps the
+/// behaviour; the host keeps the contract. It also means the feature layer carries no versioning
+/// package, so it depends on ports and the domain and on nothing else.
 /// </para>
 /// </remarks>
 public static class GedEndpoints
 {
-    /// <summary>Maps every feature route.</summary>
-    /// <param name="app">The route builder.</param>
-    /// <returns>The same route builder, for chaining.</returns>
-    public static IEndpointRouteBuilder MapGedEndpoints(this IEndpointRouteBuilder app)
+    /// <summary>Maps version 1 of every feature module.</summary>
+    /// <param name="version">The versioned route group to hang the modules off.</param>
+    /// <returns>The same group, for chaining.</returns>
+    public static RouteGroupBuilder MapGedV1(this RouteGroupBuilder version)
     {
-        ArgumentNullException.ThrowIfNull(app);
+        ArgumentNullException.ThrowIfNull(version);
 
-        DocumentsEndpoints.Map(app);
-        FoldersEndpoints.Map(app);
+        DocumentsEndpoints.Map(version);
+        FoldersEndpoints.Map(version);
 
-        return app;
+        return version;
     }
 }

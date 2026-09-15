@@ -12,7 +12,9 @@ internal static class AddDocumentVersionEndpoint
             .DisableAntiforgery()
             .Produces<AddDocumentVersionResponse>()
             .ProducesProblem(StatusCodes.Status404NotFound)
-            .ProducesProblem(StatusCodes.Status409Conflict);
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .RequireRateLimiting(GedPolicies.Content)
+            .WithRequestTimeout(GedPolicies.Content);
 
     private static async Task<IResult> HandleAsync(
         Guid id,
