@@ -2,9 +2,12 @@ using Ged.Adapters.Persistence.Converters;
 using Ged.Domain.Folders;
 using Ged.Domain.Folders.ValueObjects;
 
+using Ged.Adapters.Persistence.Providers;
+
 namespace Ged.Adapters.Persistence.Configurations;
 
-internal sealed class FolderConfiguration : IEntityTypeConfiguration<Folder>
+internal sealed class FolderConfiguration(IPersistenceProvider provider)
+    : IEntityTypeConfiguration<Folder>
 {
     public void Configure(EntityTypeBuilder<Folder> builder)
     {
@@ -51,6 +54,9 @@ internal sealed class FolderConfiguration : IEntityTypeConfiguration<Folder>
         builder.Ignore(f => f.IsDeleted);
         builder.Ignore(f => f.DomainEvents);
 
-        builder.UseXminAsConcurrencyToken();
+        // Optimistic concurrency, spelled by the engine in use: a uint onto PostgreSQL's hidden
+        // xmin column, a byte array onto a SQL Server rowversion. Both arrive as a shadow
+        // property, so no aggregate carries a storage concern in its public API.
+        provider.ConfigureConcurrencyToken(builder);
     }
 }

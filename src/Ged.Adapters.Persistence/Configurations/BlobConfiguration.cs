@@ -2,9 +2,12 @@ using Ged.Adapters.Persistence.Converters;
 using Ged.Domain.Blobs;
 using Ged.Domain.Blobs.ValueObjects;
 
+using Ged.Adapters.Persistence.Providers;
+
 namespace Ged.Adapters.Persistence.Configurations;
 
-internal sealed class BlobConfiguration : IEntityTypeConfiguration<Blob>
+internal sealed class BlobConfiguration(IPersistenceProvider provider)
+    : IEntityTypeConfiguration<Blob>
 {
     public void Configure(EntityTypeBuilder<Blob> builder)
     {
@@ -52,6 +55,9 @@ internal sealed class BlobConfiguration : IEntityTypeConfiguration<Blob>
         builder.Ignore(b => b.IsPurged);
         builder.Ignore(b => b.DomainEvents);
 
-        builder.UseXminAsConcurrencyToken();
+        // Optimistic concurrency, spelled by the engine in use: a uint onto PostgreSQL's hidden
+        // xmin column, a byte array onto a SQL Server rowversion. Both arrive as a shadow
+        // property, so no aggregate carries a storage concern in its public API.
+        provider.ConfigureConcurrencyToken(builder);
     }
 }

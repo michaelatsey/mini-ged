@@ -1,34 +1,58 @@
 using System.Reflection;
 using DbUp;
+using DbUp.Engine;
 
 // DbUp is the single source of truth for the schema. EF Core maps onto it and never generates it:
 // two tools able to change the same schema will eventually disagree, and the disagreement surfaces
 // as a startup failure in an environment nobody was watching.
 //
-//   dotnet run --project src/Ged.Migrations -- "<connection string>"
+// Scripts are per-engine because the differences are real — filtered indexes, clustered key choice,
+// JSON column type, concurrency column — and a lowest-common-denominator schema would give up the
+// optimisations that matter on each side.
+//
+//   dotnet run --project src/Ged.Migrations -- --provider postgres --connection "<cs>"
+//   dotnet run --project src/Ged.Migrations -- --provider sqlserver --connection "<cs>" --what-if
 
-var connectionString = args.FirstOrDefault()
-    ?? Environment.GetEnvironmentVariable("GED_DB");
+var provider = ArgValue("--provider") ?? Environment.GetEnvironmentVariable("GED_PROVIDER") ?? "postgres";
+var connectionString = ArgValue("--connection") ?? Environment.GetEnvironmentVariable("GED_DB");
+var whatIf = args.Contains("--what-if", StringComparer.OrdinalIgnoreCase);
 
 if (string.IsNullOrWhiteSpace(connectionString))
 {
-    Console.Error.WriteLine("Usage: Ged.Migrations <connection-string>  (or set GED_DB)");
+    Console.Error.WriteLine("Usage: Ged.Migrations --provider <postgres|sqlserver> --connection <cs> [--what-if]");
     return 2;
 }
 
-EnsureDatabase.For.PostgresqlDatabase(connectionString);
+var (folder, builder) = provider.ToLowerInvariant() switch
+{
+    "postgres" or "postgresql" or "npgsql" => ("PostgreSql", Postgres(connectionString)),
+    "sqlserver" or "mssql" => ("SqlServer", SqlServer(connectionString)),
+    _ => (string.Empty, null!),
+};
 
-var upgrader = DeployChanges.To
-    .PostgresqlDatabase(connectionString)
-    .WithScriptsEmbeddedInAssembly(Assembly.GetExecutingAssembly())
+if (folder.Length == 0)
+{
+    Console.Error.WriteLine($"Unknown provider '{provider}'. Expected 'postgres' or 'sqlserver'.");
+    return 2;
+}
+
+var upgrader = builder
+    .WithScriptsEmbeddedInAssembly(
+        Assembly.GetExecutingAssembly(),
+        name => name.Contains($".Scripts.{folder}.", StringComparison.Ordinal))
     .WithTransactionPerScript()
     .LogToConsole()
     .Build();
 
-if (args.Contains("--what-if"))
+if (whatIf)
 {
-    foreach (var script in upgrader.GetScriptsToExecute())
-        Console.WriteLine($"pending: {script.Name}");
+    var pending = upgrader.GetScriptsToExecute();
+
+    if (pending.Count == 0)
+        Console.WriteLine($"[{folder}] schema is up to date.");
+
+    foreach (var script in pending)
+        Console.WriteLine($"[{folder}] pending: {script.Name}");
 
     return 0;
 }
@@ -37,9 +61,27 @@ var result = upgrader.PerformUpgrade();
 
 if (result.Successful)
 {
-    Console.WriteLine("Upgrade successful.");
+    Console.WriteLine($"[{folder}] upgrade successful.");
     return 0;
 }
 
 Console.Error.WriteLine(result.Error);
 return 1;
+
+static UpgradeEngineBuilder Postgres(string cs)
+{
+    EnsureDatabase.For.PostgresqlDatabase(cs);
+    return DeployChanges.To.PostgresqlDatabase(cs);
+}
+
+static UpgradeEngineBuilder SqlServer(string cs)
+{
+    EnsureDatabase.For.SqlDatabase(cs);
+    return DeployChanges.To.SqlDatabase(cs);
+}
+
+string? ArgValue(string name)
+{
+    var index = Array.FindIndex(args, a => string.Equals(a, name, StringComparison.OrdinalIgnoreCase));
+    return index >= 0 && index + 1 < args.Length ? args[index + 1] : null;
+}

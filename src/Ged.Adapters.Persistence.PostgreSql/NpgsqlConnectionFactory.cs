@@ -2,7 +2,7 @@ using System.Data.Common;
 using Ged.Core.Ports;
 using Npgsql;
 
-namespace Ged.Adapters.Persistence;
+namespace Ged.Adapters.Persistence.PostgreSql;
 
 /// <summary>Opens PostgreSQL connections for the read side.</summary>
 /// <param name="dataSource">The pooled data source.</param>
@@ -11,7 +11,7 @@ namespace Ged.Adapters.Persistence;
 /// being built per call. Read handlers are the highest-frequency path in the system; a connection
 /// string parsed on every request is a cost paid on every screen.
 /// </remarks>
-public sealed class SqlConnectionFactory(NpgsqlDataSource dataSource) : IDbConnectionFactory
+internal sealed class NpgsqlConnectionFactory(NpgsqlDataSource dataSource) : IDbConnectionFactory
 {
     /// <inheritdoc />
     public async ValueTask<DbConnection> OpenAsync(CancellationToken ct = default) =>

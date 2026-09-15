@@ -1,3 +1,9 @@
+-- PostgreSQL needs no concurrency column: every row already carries a hidden xmin system column
+-- holding the id of the transaction that last wrote it, and the EF provider maps a uint shadow
+-- property onto it. SQL Server has no equivalent and gets an explicit rowversion column.
+--
+-- uuid is stored and ordered in byte order here, so UUIDv7 keys are naturally sequential and no
+-- clustering workaround is needed — unlike SQL Server, where the same values are not.
 CREATE TABLE folder (
     id          uuid         PRIMARY KEY,
     parent_id   uuid         NULL REFERENCES folder (id),

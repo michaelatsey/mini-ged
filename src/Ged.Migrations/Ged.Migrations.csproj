@@ -9,10 +9,11 @@
 
   <ItemGroup>
     <PackageReference Include="dbup-postgresql" />
+    <PackageReference Include="dbup-sqlserver" />
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="Scripts/*.sql" />
+    <EmbeddedResource Include="Scripts/**/*.sql" />
   </ItemGroup>
 
 </Project>

@@ -10,8 +10,10 @@ from the decisions made here.
 ```
 Ged.Domain                  aggregates, rules, events        ← verified
 Ged.Core                    technical ports                  ← verified
-Ged.Adapters.Persistence    EF Core write side, Dapper reads ← not yet compiled
-Ged.Migrations              DbUp: the schema's only owner    ← not yet compiled
+Ged.Adapters.Persistence            provider-agnostic write side  ← not yet compiled
+Ged.Adapters.Persistence.PostgreSql xmin, SKIP LOCKED, jsonb       ← not yet compiled
+Ged.Adapters.Persistence.SqlServer  rowversion, READPAST, clustering ← not yet compiled
+Ged.Migrations                      DbUp, one script set per engine ← not yet compiled
 Ged.Application             vertical slices                  ← next
 Ged.Api                                                      ← later
 ```
@@ -128,8 +130,8 @@ dotnet build -c Release
 dotnet test
 
 # apply the schema (DbUp owns it; EF Core never generates it)
-dotnet run --project src/Ged.Migrations -- "Host=localhost;Database=ged;Username=ged;Password=ged"
-dotnet run --project src/Ged.Migrations -- "$GED_DB" --what-if   # list pending scripts
+dotnet run --project src/Ged.Migrations -- --provider postgres  --connection "$GED_DB"
+dotnet run --project src/Ged.Migrations -- --provider sqlserver --connection "$GED_DB" --what-if
 ```
 
 `Release` builds with `TreatWarningsAsErrors`, so the build is the first reviewer.
@@ -142,6 +144,12 @@ dotnet run --project src/Ged.Migrations -- "$GED_DB" --what-if   # list pending 
 | Invariants during a mutation | EF Core, through the aggregates |
 | Screens and projections | Dapper, in the slice that needs them |
 | Publishing events | the outbox, written in the same transaction |
+| Engine-specific dialect | `IPersistenceProvider`, and nothing else |
+
+Both PostgreSQL and SQL Server are supported. The domain, the repositories and the entity
+configurations are identical on both; what genuinely differs — concurrency token type, lock hints,
+recursive-query syntax, and how each engine orders a GUID — is documented in
+`docs/persistence-providers.md`.
 
 Two tools able to change the same schema will eventually disagree, so EF Core has no migrations
 folder and `Database.Migrate` is never called.

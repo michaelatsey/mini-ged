@@ -1,3 +1,4 @@
+using Ged.Adapters.Persistence.Providers;
 using Ged.Adapters.Persistence.Outbox;
 using Ged.Domain.Blobs;
 using Ged.Domain.Documents;
@@ -9,6 +10,8 @@ namespace Ged.Adapters.Persistence;
 /// <summary>
 /// The write-side context: aggregates, their invariants, and the outbox that travels with them.
 /// </summary>
+/// <param name="options">The context options, carrying the engine-specific provider.</param>
+/// <param name="provider">The dialect and conventions of the engine in use.</param>
 /// <remarks>
 /// <para>
 /// This context maps onto a schema it does not own. DbUp applies the schema; EF Core never
@@ -22,7 +25,9 @@ namespace Ged.Adapters.Persistence;
 /// projection that will never be saved.
 /// </para>
 /// </remarks>
-public sealed class GedDbContext(DbContextOptions<GedDbContext> options) : DbContext(options)
+public sealed class GedDbContext(
+    DbContextOptions<GedDbContext> options,
+    IPersistenceProvider provider) : DbContext(options)
 {
     /// <summary>Gets the folder aggregates.</summary>
     public DbSet<Folder> Folders => Set<Folder>();
@@ -36,10 +41,21 @@ public sealed class GedDbContext(DbContextOptions<GedDbContext> options) : DbCon
     /// <summary>Gets the pending and delivered outbox messages.</summary>
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
+    /// <summary>Gets the dialect and conventions of the engine in use.</summary>
+    internal IPersistenceProvider Provider => provider;
+
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
+        ArgumentNullException.ThrowIfNull(modelBuilder);
+
+        // The provider travels through the model builder so each configuration can ask for the
+        // engine-specific pieces without every configuration taking a constructor argument.
+        modelBuilder.ApplyConfigurationsFromAssembly(
+            Assembly.GetExecutingAssembly(),
+            type => type.GetConstructor([typeof(IPersistenceProvider)]) is { } ctor
+                ? ctor.Invoke([provider])
+                : Activator.CreateInstance(type));
 
         base.OnModelCreating(modelBuilder);
     }
@@ -47,9 +63,12 @@ public sealed class GedDbContext(DbContextOptions<GedDbContext> options) : DbCon
     /// <inheritdoc />
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
+        ArgumentNullException.ThrowIfNull(configurationBuilder);
+
         // The domain stores instants, never local times. Pinning the store type here means a
         // misconfigured server cannot silently reinterpret a retention window.
-        configurationBuilder.Properties<DateTimeOffset>().HaveColumnType("timestamptz");
+        configurationBuilder.Properties<DateTimeOffset>()
+            .HaveColumnType(provider.InstantColumnType);
 
         base.ConfigureConventions(configurationBuilder);
     }
