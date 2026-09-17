@@ -70,7 +70,18 @@ commit must leave a detectable orphan, not an object nothing refers to.
 
 - French in conversation. **English in code, XML comments, commit messages and repository files.**
 - XML documentation on every public member, saying *why* rather than *what*.
-- `internal` for every port implementation — an abstraction that can be bypassed protects nothing.
+- `internal` for a port implementation **the adapter registers itself** — an abstraction that can be
+  bypassed protects nothing. Eight implementations are public today, in two groups, listed so that
+  neither group is rediscovered every session:
+  - **Cannot be `internal`.** `Ged.Adapters.Storage` and `Ged.Adapters.Storage.FileSystem` ship no
+    `AddGed…` extension, so `Program.cs` names `FileSystemObjectStorage`, `ObjectStorageRegistry`
+    and `BlobLocationResolver` directly. Making those three `internal` is CS0122 at
+    `hosts/Ged.Api/Program.cs`; giving the two projects a registration extension is what would earn
+    it.
+  - **Public without needing to be.** `SystemClock`, `EfUnitOfWork`, `BuiltInContentFormatDetector`,
+    `FileSignaturesContentDetector` and `FileTypeInspector` are each registered by their own
+    assembly and referenced from nowhere else — `EfDocumentRepository` beside them is already
+    `internal`. Tightening one is the rule applied correctly, not a finding to report.
 - Tests assert on the **type** of the violated rule, never on its message, and use fixed instants.
 - Conventional commits; the body explains the decision, not the diff.
 
@@ -79,10 +90,22 @@ commit must leave a detectable orphan, not an object nothing refers to.
 ## Already rejected
 
 Do not reintroduce. If one deserves revisiting, say so with the argument — do not work around it
-silently. Reasoning in `docs/`.
+silently. Only the reference count has a doc that argues it — `docs/domain-boundaries.md`. Endpoint
+discovery is argued in `GedEndpoints.cs` and `Program.cs`, the repository shape in XML comments on
+the three ports. For EF Core migrations, `README.md` states the outcome ("DbUp owns it; EF Core
+never generates it") and `docs/containers.md` argues the adjacent point — never migrate at startup,
+it races a rolling deploy — but the tooling choice itself is argued nowhere. Nor are MediatR and
+AutoMapper: those three rest on this line alone.
 
-MediatR · AutoMapper · generic `IRepository<T>` · search methods on a repository · endpoint discovery
-by reflection · EF Core migrations · a stored reference count.
+MediatR · AutoMapper · a generic repository standing in for a named port · search or paging methods
+on a repository · endpoint discovery by reflection · EF Core migrations · a stored reference count.
+
+`IRepository<TAggregate>` itself is **not** rejected and not optional. `IBlobRepository`,
+`IDocumentRepository` and `IFolderRepository` all derive from it for staging and commit, and each
+adds a typed `FindAsync`; removing the base interface breaks every `AddAsync` call in the handlers.
+`IFolderRepository` also has `GetAncestryAsync` — it returns identities that feed a domain rule, not
+a projection for a screen, which is why it is not the search method above. What is rejected is
+injecting `IRepository<T>` where a named port belongs — no handler takes it.
 
 Settled: nothing ambient (instant and actor are parameters), rules are `BusinessRule` types, the
 domain owns the rule and the caller supplies the fact, and no business operation reaches a storage
@@ -95,11 +118,18 @@ domain owns the rule and the caller supplies the fact, and no business operation
 Four questions are deliberately unanswered. Nothing in the repository says so, which is why they are
 here: without this section a session picks one and implements it.
 
-- **Multi-tenancy** — database, schema, or `tenant_id` column. `ITenantContext` exists; the strategy
-  decides the persistence adapters, not the domain.
+- **Multi-tenancy** — database, schema, or `tenant_id` column. Nothing tenant-aware exists yet:
+  `git grep ITenantContext` matches this file and `README.md` and no type anywhere. Do not add one —
+  writing the interface is already choosing. The strategy decides the persistence adapters, not the
+  domain.
 - **Resource authorization** — how `RessourceCode` and `ActionCode` are resolved.
-- **Legacy Office formats** — `.doc`, `.xls`, `.ppt`, `.rtf` are in the catalogue but not the
-  allowlist. A security policy decision, not a technical one.
+- **Legacy Office formats** — `.doc`, `.xls`, `.ppt`, `.rtf` are flagged `CarriesExecutableContent`
+  and left out of the **explicit** `AllowedFormats` in `appsettings.json` — but not out of the
+  catalogue's sets: `documents` expands to all four and `office` to the first three.
+  `docs/uploads.md` offers sets as the readable way to write a policy and then says to list formats
+  explicitly in production — only the second half protects, which is why the shipped list is
+  thirteen names. So `"AllowedFormats": ["documents"]` would accept all four silently, and
+  `MaxSizeByFormat` already carries an `rtf` entry. A security policy decision, not a technical one.
 - **Malware scanning** — whether an ICAP service already exists. The answer changes the adapter, not
   the architecture.
 
