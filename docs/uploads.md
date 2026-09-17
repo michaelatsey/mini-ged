@@ -49,6 +49,20 @@ format
 Validated with `ValidateOnStart`: a typo in a format name stops the deployment instead of silently
 changing what the API accepts.
 
+### The ceiling in front of the ceiling
+
+`MaxSizeBytes` is the third limit a request meets, not the first. Kestrel refuses a body over
+30,000,000 bytes, and the form binder refuses a multipart body over 128 MiB — both while the request
+is being bound, before a handler runs, so the answer is a bare 413 with nothing of the policy in it.
+
+Both are therefore derived from `MaxSizeBytes` at startup, plus a mebibyte for the multipart
+envelope, rather than written next to it. A second copy of a number is a number that drifts, and this
+one did: the policy said 256 MiB while Kestrel stayed at its default, and every upload over 28.6 MB
+was refused with a message about neither.
+
+Raising `MaxSizeBytes` therefore raises what the transport reads, which is also what a container has
+to hold in `/tmp` while it is staged. `docs/containers.md` carries that arithmetic.
+
 ### Sets
 
 An entry may name a format or a set, so a policy can be written the way the requirement was:

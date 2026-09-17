@@ -76,13 +76,11 @@ builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database");
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto);
 
-// Uploads are bounded here rather than left to the 30 MB default, which is both too small for a
-// scanned file and unbounded in the sense that nothing states it.
-builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
-{
-    options.MultipartBodyLengthLimit = 256L * 1024 * 1024;
-    options.ValueLengthLimit = 1024 * 1024;
-});
+// Uploads are bounded by Ged:Uploads:MaxSizeBytes rather than left to the 30 MB default, which is
+// both too small for a scanned file and unbounded in the sense that nothing states it. Kestrel and
+// the form binder are configured from that one number: written out here, the two would drift from
+// it — and they did, which is how a 50 MB upload the policy accepted was refused with a 413.
+builder.Services.AddGedUploadTransportLimits(builder.Configuration);
 
 var app = builder.Build();
 

@@ -1,6 +1,6 @@
 # REPO MAP — mini-ged
 
-Generated 2026-09-17 from commit `bcb6950`.
+Generated 2026-09-17 from commit `c335e2c`.
 Regenerate with `./scripts/repo-map.sh > REPO-MAP.md` — never edit by hand.
 
 ---
@@ -9,7 +9,7 @@ Regenerate with `./scripts/repo-map.sh > REPO-MAP.md` — never edit by hand.
 
 ```
 Ged.Migrations                                 1 files     133 lines
-Ged.Api                                        6 files     550 lines
+Ged.Api                                        6 files     548 lines
 MicroKit.Core                                  1 files      14 lines
 MicroKit.Domain                               36 files    1782 lines
 MicroKit.Persistence.Abstractions             10 files     343 lines
@@ -29,9 +29,9 @@ Ged.Adapters.Storage.FileSystem                2 files     204 lines
 Ged.Adapters.Storage                           2 files      99 lines
 Ged.Core                                       9 files     275 lines
 Ged.Domain                                    51 files    2512 lines
-Ged.Features                                  47 files    3292 lines
+Ged.Features                                  48 files    3376 lines
 Ged.Domain.Tests                              10 files     765 lines
-Ged.Features.Tests                            13 files     919 lines
+Ged.Features.Tests                            15 files    1178 lines
 ```
 
 ## Reference graph
@@ -259,6 +259,7 @@ src/Ged.Adapters.FileTypes/registration.md ```csharp
 ## Recent history
 
 ```
+c335e2c fix(blobs): restore purged digests and stop the purge racing a dedup (#11)
 bcb6950 chore: add a /fix-issue project skill (#10)
 d4edfbc chore(compose): bind-mount the filesystem storage (#3)
 c360c92 chore: add CLAUDE.md for Claude Code sessions (#2)
