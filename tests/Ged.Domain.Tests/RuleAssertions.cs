@@ -7,7 +7,7 @@ namespace Ged.Domain.Tests;
 internal static class RuleAssertions
 {
     public static TRule ShouldBreak<TRule>(this Action act)
-        where TRule : IBusinessRule
+        where TRule : BusinessRule
     {
         var ex = Should.Throw<BusinessRuleViolationException>(act);
         ex.ViolatedRule.ShouldBeOfType<TRule>();

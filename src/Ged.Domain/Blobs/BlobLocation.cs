@@ -1,6 +1,3 @@
-using Ged.Domain.Blobs.Identifiers;
-using Ged.Domain.Blobs.ValueObjects;
-
 namespace Ged.Domain.Blobs;
 
 /// <summary>
@@ -47,7 +44,7 @@ public sealed class BlobLocation : Entity<BlobLocationId>
     public StorageProvider Provider { get; private init; }
 
     /// <summary>Gets the address within that backend.</summary>
-    public ObjectKey ObjectKey { get; private init; }
+    public ObjectKey ObjectKey { get; private set; }
 
     /// <summary>Gets the role this location currently plays.</summary>
     public LocationState State { get; private set; }
@@ -62,6 +59,42 @@ public sealed class BlobLocation : Entity<BlobLocationId>
 
     /// <summary>Gets a value indicating whether content can be read from this location.</summary>
     public bool IsReadable => State.IsReadable;
+
+    /// <summary>Materialisation constructor, used by the persistence layer only.</summary>
+    /// <param name="id">The location identifier.</param>
+    /// <param name="blobId">The blob whose content lives here.</param>
+    /// <param name="provider">The storage backend.</param>
+    /// <param name="state">The role this location plays.</param>
+    /// <param name="registeredAt">When the location was registered.</param>
+    /// <remarks>
+    /// <para>
+    /// <see cref="ObjectKey"/> is absent from this signature on purpose. It maps to more than one
+    /// column, so a persistence provider treats it as a nested structure rather than as a value —
+    /// and a structure cannot be handed to a constructor, only assigned afterwards. Leaving it out
+    /// is what allows the rest of the state to be restored in one step.
+    /// </para>
+    /// <para>
+    /// <see langword="private"/>, and deliberately not a substitute for the constructor above: the
+    /// domain still has exactly one way to create a location, and it requires an address.
+    /// </para>
+    /// </remarks>
+    private BlobLocation(
+        BlobLocationId id,
+        BlobId blobId,
+        StorageProvider provider,
+        LocationState state,
+        DateTimeOffset registeredAt)
+        : base(id)
+    {
+        BlobId = blobId;
+        Provider = provider;
+        State = state;
+        RegisteredAt = registeredAt;
+
+        // Assigned immediately afterwards by the provider. There is no instant at which an
+        // application can observe this object, so the null never escapes.
+        ObjectKey = null!;
+    }
 
     internal void Verify(DateTimeOffset verifiedAt)
     {

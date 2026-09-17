@@ -1,5 +1,5 @@
-using Ged.Domain.Blobs.Identifiers;
-using Ged.Domain.Documents.ValueObjects;
+using Ged.Domain.Blobs;
+using Ged.Domain.Documents;
 
 namespace Ged.Domain.Tests.Documents;
 

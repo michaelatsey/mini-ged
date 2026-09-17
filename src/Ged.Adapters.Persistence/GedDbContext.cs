@@ -4,11 +4,13 @@ using Ged.Adapters.Persistence.Providers;
 using Ged.Domain.Blobs;
 using Ged.Domain.Documents;
 using Ged.Domain.Folders;
+using System.Diagnostics.CodeAnalysis;
+using System.Reflection;
 
 namespace Ged.Adapters.Persistence;
 
 /// <summary>
-/// The write-side context: aggregates, their invariants, and the outbox that travels with them.
+/// The write-side persistence context for aggregates and the transactional outbox.
 /// </summary>
 /// <param name="options">The context options, carrying the engine-specific provider.</param>
 /// <param name="provider">The dialect and conventions of the engine in use.</param>
@@ -25,6 +27,7 @@ namespace Ged.Adapters.Persistence;
 /// projection that will never be saved.
 /// </para>
 /// </remarks>
+[UnconditionalSuppressMessage("Trimming", "IL2026:Members annotated with 'RequiresUnreferencedCodeAttribute' require dynamic access otherwise can break functionality when trimming application code", Justification = "<Pending>")]
 public sealed class GedDbContext(
     DbContextOptions<GedDbContext> options,
     IPersistenceProvider provider) : DbContext(options)
@@ -47,24 +50,15 @@ public sealed class GedDbContext(
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        ArgumentNullException.ThrowIfNull(modelBuilder);
-
-        // Written out rather than discovered by scanning the assembly. A configuration that was
-        // added but never applied is then a compile-time omission a reader can see, not a table
-        // that silently maps by convention — and nothing here has to be explained to a trimmer.
-        modelBuilder.ApplyConfiguration(new FolderConfiguration(provider));
-        modelBuilder.ApplyConfiguration(new DocumentConfiguration(provider));
-        modelBuilder.ApplyConfiguration(new BlobConfiguration(provider));
-        modelBuilder.ApplyConfiguration(new OutboxMessageConfiguration(provider));
-
         base.OnModelCreating(modelBuilder);
+
+        GedModelConfiguration.Apply(modelBuilder, provider);
+
     }
 
     /// <inheritdoc />
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
-        ArgumentNullException.ThrowIfNull(configurationBuilder);
-
         // The domain stores instants, never local times. Pinning the store type here means a
         // misconfigured server cannot silently reinterpret a retention window.
         configurationBuilder.Properties<DateTimeOffset>()

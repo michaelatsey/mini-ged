@@ -1,7 +1,4 @@
-using Ged.Domain.Abstractions;
-using Ged.Domain.Blobs.Identifiers;
-using Ged.Domain.Documents.Identifiers;
-using Ged.Domain.Documents.ValueObjects;
+using Ged.Domain.Blobs;
 
 namespace Ged.Domain.Documents;
 

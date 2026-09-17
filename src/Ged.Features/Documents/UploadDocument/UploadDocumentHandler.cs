@@ -1,9 +1,7 @@
 using Ged.Domain.Blobs;
-using Ged.Domain.Blobs.Identifiers;
+using Ged.Features.Common.FileTypes;
 using Ged.Domain.Documents;
-using Ged.Domain.Documents.ValueObjects;
 using Ged.Domain.Folders;
-using Ged.Domain.Folders.Identifiers;
 
 namespace Ged.Features.Documents.UploadDocument;
 
@@ -35,6 +33,7 @@ public sealed record UploadDocumentResponse(
 /// <param name="blobs">Finds or registers the content.</param>
 /// <param name="documents">Stages the new document.</param>
 /// <param name="storages">Supplies the backend content is written to.</param>
+/// <param name="fileTypes">Decides whether the upload may be stored, and what it actually is.</param>
 /// <param name="unitOfWork">Commits both aggregates together.</param>
 /// <param name="clock">Supplies the instant of the operation.</param>
 public sealed class UploadDocumentHandler(
@@ -42,6 +41,7 @@ public sealed class UploadDocumentHandler(
     IBlobRepository blobs,
     IDocumentRepository documents,
     IObjectStorageRegistry storages,
+    IFileTypeInspector fileTypes,
     IUnitOfWork unitOfWork,
     IClock clock)
 {
@@ -78,7 +78,39 @@ public sealed class UploadDocumentHandler(
         var docType = new DocType(command.DocType ?? DocType.Unknown.Code);
         var now = clock.UtcNow;
 
-        await using var staged = await StagedContent.CreateAsync(command.Content, ct);
+        // The ceiling is resolved from the extension before a byte is read, so an oversized upload
+        // stops at the limit instead of being written to disk in full and refused afterwards.
+        var byName = fileTypes.CheckName(command.FileName, declaredMediaType: null, docType.Code);
+
+        if (!byName.Accepted)
+        {
+            return Outcome.Fail<UploadDocumentResponse>("UNSUPPORTED_MEDIA_TYPE", byName.Message);
+        }
+
+        StagedContent staged;
+
+        try
+        {
+            staged = await StagedContent.CreateAsync(command.Content, byName.MaxSizeBytes, ct);
+        }
+        catch (ContentTooLargeException tooLarge)
+        {
+            return Outcome.Fail<UploadDocumentResponse>("UNSUPPORTED_MEDIA_TYPE", tooLarge.Message);
+        }
+
+        await using var _ = staged;
+
+        // The content decides, not the name and not the header the client sent. Both were already
+        // checked at the endpoint, cheaply; this is the one that is evidence.
+        var decision = fileTypes.Inspect(
+            command.FileName, staged.SizeBytes, staged.Header, staged.OpenRead, docType.Code);
+
+        if (!decision.Accepted)
+        {
+            return Outcome.Fail<UploadDocumentResponse>("UNSUPPORTED_MEDIA_TYPE", decision.Message!);
+        }
+
+        var mimeType = new MimeType(decision.MediaType);
 
         var blobId = BlobId.FromSha256(staged.Digest);
         var existing = await blobs.FindAsync(blobId, ct);
@@ -93,7 +125,7 @@ public sealed class UploadDocumentHandler(
             await using (var bytes = staged.OpenRead())
             {
                 await storage.PutAsync(
-                    key, bytes, new ObjectMetadata(staged.SizeBytes, MimeTypeOf(name)), ct);
+                    key, bytes, new ObjectMetadata(staged.SizeBytes, decision.MediaType), ct);
             }
 
             if (existing is null)
@@ -112,8 +144,7 @@ public sealed class UploadDocumentHandler(
         }
 
         var document = Document.Create(
-            folderId, name, docType, blobId,
-            new MimeType(MimeTypeOf(name)), staged.SizeBytes, now, actor);
+            folderId, name, docType, blobId, mimeType, staged.SizeBytes, now, actor);
 
         await documents.AddAsync(document, ct);
 
@@ -123,18 +154,4 @@ public sealed class UploadDocumentHandler(
             document.Id.Value, document.CurrentVersionId.Value, blobId.Value, deduplicated));
     }
 
-    // The declared content type is not trusted, and sniffing bytes is an ingestion concern rather
-    // than a use-case one. The extension is a hint; a scanner slotted in later can correct it.
-    private static string MimeTypeOf(DocumentName name) => name.Extension switch
-    {
-        "pdf" => "application/pdf",
-        "png" => "image/png",
-        "jpg" or "jpeg" => "image/jpeg",
-        "txt" => "text/plain",
-        "csv" => "text/csv",
-        "json" => "application/json",
-        "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        _ => "application/octet-stream",
-    };
 }

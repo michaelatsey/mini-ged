@@ -1,9 +1,8 @@
-using Ged.Domain.Blobs.Identifiers;
+using Ged.Domain.Blobs;
 using Ged.Domain.Documents;
 using Ged.Domain.Documents.Events;
 using Ged.Domain.Documents.Rules;
-using Ged.Domain.Documents.ValueObjects;
-using Ged.Domain.Folders.Identifiers;
+using Ged.Domain.Folders;
 
 namespace Ged.Domain.Tests.Documents;
 
@@ -42,7 +41,7 @@ public sealed class DocumentTests
     {
         var document = NewDocument();
 
-        var act = () => document.AddVersion(
+        Action act = () => document.AddVersion(
             BlobA, new DocumentName("rapport.pdf"), MimeType.Pdf, 1024, null, Fixed.Later, Fixed.Me);
 
         act.ShouldBreak<VersionContentMustDifferFromCurrentRule>();
@@ -84,7 +83,7 @@ public sealed class DocumentTests
     {
         var document = NewDocument();
 
-        var act = () => document.RestoreVersion(document.CurrentVersionId, Fixed.Later, Fixed.Me);
+        Action act = () => document.RestoreVersion(document.CurrentVersionId, Fixed.Later, Fixed.Me);
 
         act.ShouldBreak<VersionMustNotAlreadyBeCurrentRule>();
     }
@@ -94,8 +93,8 @@ public sealed class DocumentTests
     {
         var document = NewDocument();
 
-        var act = () => document.RestoreVersion(
-            Ged.Domain.Documents.Identifiers.DocumentVersionId.New(), Fixed.Later, Fixed.Me);
+        Action act = () => document.RestoreVersion(
+            Ged.Domain.Documents.DocumentVersionId.New(), Fixed.Later, Fixed.Me);
 
         act.ShouldBreak<VersionMustBelongToDocumentRule>();
     }

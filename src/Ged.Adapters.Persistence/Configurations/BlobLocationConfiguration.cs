@@ -1,6 +1,5 @@
 using Ged.Adapters.Persistence.Converters;
 using Ged.Domain.Blobs;
-using Ged.Domain.Blobs.ValueObjects;
 
 namespace Ged.Adapters.Persistence.Configurations;
 
@@ -45,7 +44,7 @@ internal static class BlobLocationConfiguration
         {
             key.Property(k => k.Bucket).HasColumnName("bucket").HasMaxLength(100).IsRequired();
             key.Property(k => k.Key).HasColumnName("object_key")
-               .HasMaxLength(ObjectKey.MaxKeyLength).IsRequired();
+                .HasMaxLength(ObjectKey.MaxKeyLength).IsRequired();
         });
 
         builder.Navigation(l => l.ObjectKey).IsRequired();

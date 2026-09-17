@@ -1,6 +1,9 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
     <RootNamespace>Ged.Adapters.Persistence.PostgreSql</RootNamespace>
   </PropertyGroup>
 
@@ -11,7 +14,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../Ged.Adapters.Persistence/Ged.Adapters.Persistence.csproj" />
+    <ProjectReference Include="..\Ged.Adapters.Persistence\Ged.Adapters.Persistence.csproj" />
   </ItemGroup>
+
+  
 
 </Project>

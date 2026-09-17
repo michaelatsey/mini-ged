@@ -1,6 +1,3 @@
-using Ged.Domain.Blobs.Identifiers;
-using MicroKit.Persistence.Abstractions;
-
 namespace Ged.Domain.Blobs;
 
 /// <summary>Loads and stores <see cref="Blob"/> aggregates.</summary>

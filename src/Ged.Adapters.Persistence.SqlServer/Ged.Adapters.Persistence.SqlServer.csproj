@@ -1,7 +1,9 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <RootNamespace>Ged.Adapters.Persistence.SqlServer</RootNamespace>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
   </PropertyGroup>
 
   <ItemGroup>
@@ -11,7 +13,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../Ged.Adapters.Persistence/Ged.Adapters.Persistence.csproj" />
+    <ProjectReference Include="..\Ged.Adapters.Persistence\Ged.Adapters.Persistence.csproj" />
   </ItemGroup>
 
 </Project>

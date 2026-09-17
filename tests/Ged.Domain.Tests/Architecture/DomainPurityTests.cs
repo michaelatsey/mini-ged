@@ -1,5 +1,6 @@
 using Ged.Domain.Documents;
 
+
 namespace Ged.Domain.Tests.Architecture;
 
 /// <summary>
@@ -50,7 +51,7 @@ public sealed class DomainPurityTests
         var offenders = typeof(Document).Assembly.GetTypes()
             .Where(t => typeof(MicroKit.Domain.Events.IDomainEvent).IsAssignableFrom(t))
             .Where(t => t is { IsAbstract: false, IsInterface: false })
-            .Where(t => !typeof(GedDomainEvent).IsAssignableFrom(t))
+            .Where(t => !typeof(DomainEvent).IsAssignableFrom(t))
             .Select(t => t.Name)
             .ToArray();
 

@@ -1,6 +1,6 @@
 using Ged.Adapters.Persistence.Outbox;
 using Ged.Adapters.Persistence.Providers;
-using Ged.Core.Ports;
+using MicroKit.Persistence.Abstractions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 

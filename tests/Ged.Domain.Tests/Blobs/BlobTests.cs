@@ -1,8 +1,6 @@
 using Ged.Domain.Blobs;
 using Ged.Domain.Blobs.Events;
-using Ged.Domain.Blobs.Identifiers;
 using Ged.Domain.Blobs.Rules;
-using Ged.Domain.Blobs.ValueObjects;
 
 namespace Ged.Domain.Tests.Blobs;
 
@@ -98,7 +96,7 @@ public sealed class BlobTests
     {
         var blob = Registered();
 
-        var act = () => blob.AddLocation(StorageProvider.Beys, OnBeys, false, Fixed.Later, Fixed.Me);
+        Action act = () => blob.AddLocation(StorageProvider.Beys, OnBeys, false, Fixed.Later, Fixed.Me);
 
         act.ShouldBreak<LocationMustNotAlreadyExistRule>();
     }

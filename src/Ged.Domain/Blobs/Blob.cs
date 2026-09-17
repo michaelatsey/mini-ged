@@ -1,8 +1,5 @@
-using Ged.Domain.Abstractions;
 using Ged.Domain.Blobs.Events;
-using Ged.Domain.Blobs.Identifiers;
 using Ged.Domain.Blobs.Rules;
-using Ged.Domain.Blobs.ValueObjects;
 
 namespace Ged.Domain.Blobs;
 
@@ -30,7 +27,7 @@ namespace Ged.Domain.Blobs;
 /// type deletes a byte.
 /// </para>
 /// </remarks>
-public sealed class Blob : AuditableRoot<BlobId>
+public sealed class Blob : AuditableAggregateRoot<BlobId>
 {
     private readonly List<BlobLocation> _locations = [];
 

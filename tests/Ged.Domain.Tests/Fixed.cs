@@ -1,3 +1,4 @@
+
 namespace Ged.Domain.Tests;
 
 /// <summary>

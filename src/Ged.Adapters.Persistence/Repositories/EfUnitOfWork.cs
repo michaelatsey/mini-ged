@@ -23,7 +23,7 @@ public sealed class EfUnitOfWork(GedDbContext context) : IUnitOfWork
     {
         try
         {
-            await context.SaveChangesAsync(ct);
+            await context.SaveChangesAsync(ct).ConfigureAwait(false);
         }
         catch (DbUpdateConcurrencyException ex)
         {
@@ -35,4 +35,14 @@ public sealed class EfUnitOfWork(GedDbContext context) : IUnitOfWork
             throw new PersistenceException("The changes could not be saved.", ex);
         }
     }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Clears the EF Core change tracker: every <c>Added</c>, <c>Modified</c>, and <c>Deleted</c>
+    /// entry is detached and nothing is written. Purely in-memory — no I/O, no provider exception,
+    /// nothing to translate into <see cref="PersistenceException"/>. It does not touch the ambient
+    /// database transaction: the transaction's own commit or rollback still decides the fate of
+    /// anything already flushed inside it, and rows committed before it began are unaffected.
+    /// </remarks>
+    public void DiscardChanges() => context.ChangeTracker.Clear();
 }

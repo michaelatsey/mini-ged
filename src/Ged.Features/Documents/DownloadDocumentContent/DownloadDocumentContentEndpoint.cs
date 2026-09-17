@@ -9,9 +9,7 @@ internal static class DownloadDocumentContentEndpoint
         documents.MapGet("/{id:guid}/content", HandleAsync)
             .WithName("DownloadDocumentContent")
             .WithSummary("Streams the content of a document.")
-            .ProducesProblem(StatusCodes.Status404NotFound)
-            .RequireRateLimiting(GedPolicies.Content)
-            .WithRequestTimeout(GedPolicies.Content);
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
     private static async Task<IResult> HandleAsync(
         Guid id,

@@ -1,3 +1,5 @@
+using Ged.Features.Common.FileTypes;
+
 namespace Ged.Features.Documents.UploadDocument;
 
 /// <summary>Maps <c>POST /documents</c>.</summary>
@@ -12,6 +14,7 @@ internal static class UploadDocumentEndpoint
             .DisableAntiforgery()
             .Produces<UploadDocumentResponse>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status415UnsupportedMediaType)
             .RequireRateLimiting(GedPolicies.Content)
             .WithRequestTimeout(GedPolicies.Content);
 
@@ -20,9 +23,21 @@ internal static class UploadDocumentEndpoint
         Guid folderId,
         string? docType,
         UploadDocumentHandler handler,
+        IFileTypeInspector fileTypes,
         HttpContext http,
         CancellationToken ct)
     {
+        // Refused here, before a single byte is read from the request body. The content check is
+        // authoritative but needs the file staged to disk first; there is no reason to buffer 200 MB
+        // of an executable to discover its extension was never acceptable.
+        var byName = fileTypes.CheckName(file.FileName, file.ContentType, docType);
+
+        if (!byName.Accepted)
+        {
+            return Outcome.Fail<object>("UNSUPPORTED_MEDIA_TYPE", byName.Message)
+                .ToResult(_ => Results.Empty);
+        }
+
         await using var content = file.OpenReadStream();
 
         var outcome = await handler.HandleAsync(

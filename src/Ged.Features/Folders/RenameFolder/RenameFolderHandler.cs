@@ -1,6 +1,4 @@
 using Ged.Domain.Folders;
-using Ged.Domain.Folders.Identifiers;
-using Ged.Domain.Folders.ValueObjects;
 
 namespace Ged.Features.Folders.RenameFolder;
 

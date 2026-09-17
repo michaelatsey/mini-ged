@@ -1,12 +1,15 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
     <RootNamespace>Ged.Adapters.Storage.FileSystem</RootNamespace>
     <IsTrimmable>true</IsTrimmable>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../Ged.Adapters.Storage/Ged.Adapters.Storage.csproj" />
+    <ProjectReference Include="..\Ged.Adapters.Storage\Ged.Adapters.Storage.csproj" />
   </ItemGroup>
 
 </Project>

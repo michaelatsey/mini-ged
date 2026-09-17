@@ -1,8 +1,5 @@
-using Ged.Domain.Abstractions;
 using Ged.Domain.Folders.Events;
-using Ged.Domain.Folders.Identifiers;
 using Ged.Domain.Folders.Rules;
-using Ged.Domain.Folders.ValueObjects;
 
 namespace Ged.Domain.Folders;
 
@@ -21,7 +18,7 @@ namespace Ged.Domain.Folders;
 /// the caller supplies the observation.
 /// </para>
 /// </remarks>
-public sealed class Folder : AuditableRoot<FolderId>
+public sealed class Folder : AuditableAggregateRoot<FolderId>
 {
     private Folder(
         FolderId id,
@@ -97,7 +94,7 @@ public sealed class Folder : AuditableRoot<FolderId>
         ArgumentNullException.ThrowIfNull(type);
         ArgumentNullException.ThrowIfNull(by);
 
-        DomainRules.Check(new FolderDepthMustNotExceedLimitRule(parentAncestry.Depth + 1));
+        CheckRule(new FolderDepthMustNotExceedLimitRule(parentAncestry.Depth + 1));
 
         var folder = new Folder(FolderId.New(), parentAncestry.Self, name, type, now, by);
 

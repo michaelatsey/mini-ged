@@ -1,7 +1,5 @@
 using Ged.Domain.Documents;
-using Ged.Domain.Documents.Identifiers;
 using Ged.Domain.Folders;
-using Ged.Domain.Folders.Identifiers;
 
 namespace Ged.Features.Documents.MoveDocument;
 

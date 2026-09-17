@@ -1,0 +1,39 @@
+# Build output and local state never belong in the build context: they bloat every layer, and a bin/
+# from the host can silently shadow what the build stage just produced.
+**/bin/
+**/obj/
+**/out/
+artifacts/
+TestResults/
+
+# Visual Studio per-developer files. These carry local launch profiles and, occasionally, connection
+# strings — they must reach neither the context nor an image layer.
+**/*.user
+**/*.suo
+.vs/
+.idea/
+
+# WSL writes an alternate data stream beside files copied from Windows. Harmless on disk, noise in
+# the context — and they will otherwise be COPYd into the image.
+**/*:Zone.Identifier
+
+# Secrets and local storage
+.env
+ged-storage/
+**/appsettings.*.local.json
+
+# Not read by any build
+.git/
+.github/
+*.md
+docs/
+LICENSE
+compose*.yaml
+docker-compose*.yml
+docker-compose.dcproj
+**/Dockerfile
+.dockerignore
+.editorconfig
+
+# NOTE: libraries/ is deliberately NOT ignored. MicroKit is vendored as source, and a restore that
+# cannot see it fails on the first ProjectReference.

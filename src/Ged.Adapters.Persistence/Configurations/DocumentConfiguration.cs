@@ -1,8 +1,6 @@
 using Ged.Adapters.Persistence.Converters;
-using Ged.Domain.Documents;
-using Ged.Domain.Documents.ValueObjects;
-
 using Ged.Adapters.Persistence.Providers;
+using Ged.Domain.Documents;
 
 namespace Ged.Adapters.Persistence.Configurations;
 

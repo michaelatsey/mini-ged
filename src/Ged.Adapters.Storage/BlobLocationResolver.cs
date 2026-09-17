@@ -1,5 +1,6 @@
 using Ged.Core.Ports;
 using Ged.Domain.Blobs;
+using System.Reflection.Metadata;
 
 namespace Ged.Adapters.Storage;
 
@@ -13,7 +14,7 @@ namespace Ged.Adapters.Storage;
 public sealed class BlobLocationResolver(IObjectStorageRegistry registry) : IBlobLocationResolver
 {
     /// <inheritdoc />
-    public async Task<BlobContent> OpenAsync(Blob blob, CancellationToken ct = default)
+    public async Task<BlobContent> OpenAsync(Domain.Blobs.Blob blob, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(blob);
 

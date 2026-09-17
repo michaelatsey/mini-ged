@@ -1,6 +1,3 @@
-using Ged.Domain.Blobs.Identifiers;
-using Ged.Domain.Blobs.ValueObjects;
-
 namespace Ged.Domain.Blobs.Rules;
 
 /// <summary>Prevents any mutation of a purged blob.</summary>

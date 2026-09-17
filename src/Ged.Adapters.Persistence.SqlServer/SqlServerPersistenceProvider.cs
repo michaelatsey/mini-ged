@@ -1,4 +1,5 @@
 using Ged.Adapters.Persistence.Providers;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Ged.Adapters.Persistence.SqlServer;

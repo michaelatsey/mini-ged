@@ -33,6 +33,11 @@ public static class ApiResults
             "NOT_FOUND" => Results.Problem(
                 title: outcome.Message, statusCode: StatusCodes.Status404NotFound,
                 extensions: Extensions(outcome.ErrorCode)),
+            // 415 rather than 400: the request is well formed, the payload's media type is what
+            // this endpoint will not accept — which is exactly what the status means.
+            "UNSUPPORTED_MEDIA_TYPE" => Results.Problem(
+                title: outcome.Message, statusCode: StatusCodes.Status415UnsupportedMediaType,
+                extensions: Extensions(outcome.ErrorCode)),
             "CONFLICT" => Results.Problem(
                 title: outcome.Message, statusCode: StatusCodes.Status409Conflict,
                 extensions: Extensions(outcome.ErrorCode)),

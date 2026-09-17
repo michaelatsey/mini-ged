@@ -1,8 +1,6 @@
 using Ged.Adapters.Persistence.Converters;
-using Ged.Domain.Folders;
-using Ged.Domain.Folders.ValueObjects;
-
 using Ged.Adapters.Persistence.Providers;
+using Ged.Domain.Folders;
 
 namespace Ged.Adapters.Persistence.Configurations;
 

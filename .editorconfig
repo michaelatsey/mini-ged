@@ -8,11 +8,12 @@ indent_size = 4
 trim_trailing_whitespace = true
 insert_final_newline = true
 
-[*.{csproj,props,targets,xml,yml,yaml}]
+[*.{csproj,props,targets,xml}]
 indent_size = 2
 
 [*.md]
 trim_trailing_whitespace = false
 
+# Test projects - suppress CA1707 (underscores in test method names are xUnit convention)
 [{*Tests.cs,tests/**/*.cs}]
 dotnet_diagnostic.CA1707.severity = none

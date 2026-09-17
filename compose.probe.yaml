@@ -1,0 +1,25 @@
+# Optional overlay: an in-container health probe for the API.
+#
+# The chiseled runtime image has no shell, no curl and no wget, so a compose `healthcheck` on the API
+# cannot run inside it. Where an orchestrator does the probing — a Kubernetes httpGet, an ALB target
+# group — that is the right answer and nothing is needed here.
+#
+# For local work where `depends_on: service_healthy` on the API is wanted, this overlay adds a tiny
+# sidecar that probes it from outside:
+#
+#   docker compose -f compose.yaml -f compose.probe.yaml up --build
+
+name: ged
+
+services:
+  api-probe:
+    image: curlimages/curl:8.11.1
+    command: ["sleep", "infinity"]
+    depends_on:
+      - api
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://api:8080/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s

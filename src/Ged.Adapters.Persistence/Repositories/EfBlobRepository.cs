@@ -1,5 +1,4 @@
 using Ged.Domain.Blobs;
-using Ged.Domain.Blobs.Identifiers;
 using MicroKit.Persistence.Abstractions;
 
 namespace Ged.Adapters.Persistence.Repositories;

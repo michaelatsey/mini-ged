@@ -1,10 +1,7 @@
-using Ged.Domain.Abstractions;
-using Ged.Domain.Blobs.Identifiers;
+using Ged.Domain.Blobs;
 using Ged.Domain.Documents.Events;
-using Ged.Domain.Documents.Identifiers;
 using Ged.Domain.Documents.Rules;
-using Ged.Domain.Documents.ValueObjects;
-using Ged.Domain.Folders.Identifiers;
+using Ged.Domain.Folders;
 
 namespace Ged.Domain.Documents;
 
@@ -24,7 +21,7 @@ namespace Ged.Domain.Documents;
 /// deferred, reversible background decision taken elsewhere.
 /// </para>
 /// </remarks>
-public sealed class Document : AuditableRoot<DocumentId>
+public sealed class Document : AuditableAggregateRoot<DocumentId>
 {
     private readonly List<DocumentVersion> _versions = [];
 

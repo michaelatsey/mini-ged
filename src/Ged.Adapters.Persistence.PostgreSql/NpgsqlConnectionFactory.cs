@@ -1,6 +1,6 @@
-using System.Data.Common;
-using Ged.Core.Ports;
+using MicroKit.Persistence.Abstractions;
 using Npgsql;
+using System.Data.Common;
 
 namespace Ged.Adapters.Persistence.PostgreSql;
 

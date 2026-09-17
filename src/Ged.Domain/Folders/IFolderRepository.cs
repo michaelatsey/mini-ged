@@ -1,6 +1,3 @@
-using Ged.Domain.Folders.Identifiers;
-using MicroKit.Persistence.Abstractions;
-
 namespace Ged.Domain.Folders;
 
 /// <summary>Loads and stores <see cref="Folder"/> aggregates.</summary>

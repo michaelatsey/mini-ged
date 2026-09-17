@@ -1,6 +1,5 @@
 using Ged.Adapters.Persistence.Converters;
 using Ged.Domain.Documents;
-using Ged.Domain.Documents.ValueObjects;
 
 namespace Ged.Adapters.Persistence.Configurations;
 

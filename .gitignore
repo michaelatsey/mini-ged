@@ -8,3 +8,8 @@ artifacts/
 TestResults/
 *.nupkg
 *.snupkg
+*:Zone.Identifier
+
+# Local secrets and local storage — never committed, never baked into an image
+.env
+ged-storage/

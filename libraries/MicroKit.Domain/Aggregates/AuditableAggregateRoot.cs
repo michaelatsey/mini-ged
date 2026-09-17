@@ -1,0 +1,83 @@
+using MicroKit.Domain.Identifiers;
+using MicroKit.Domain.ValueObjects.Common;
+
+namespace MicroKit.Domain.Aggregates;
+
+/// <summary>
+/// Base class for auditable aggregate roots in DDD.
+/// Combines aggregate root functionality with lightweight audit tracking.
+/// </summary>
+/// <typeparam name="TId">The strongly-typed identifier type</typeparam>
+/// <remarks>
+/// This class provides audit properties but does not automatically populate them.
+/// The Application/Infrastructure layers are responsible for setting audit values
+/// during persistence operations based on the current security context and business rules.
+/// </remarks>
+public abstract class AuditableAggregateRoot<TId> : AggregateRoot<TId>, IAuditableEntity
+    where TId : IEntityId
+{
+    /// <summary>
+    /// Initializes a new instance of the <see cref="AuditableAggregateRoot{TId}"/> class.
+    /// </summary>
+    /// <param name="id">The strongly-typed identifier for this aggregate root.</param>
+    /// <param name="createdAt">The instant this aggregate was created, in UTC.</param>
+    /// <param name="createdBy">
+    /// The actor creating this aggregate. Use <see cref="Actor.System"/> when the action
+    /// has no user in context.
+    /// </param>
+    protected AuditableAggregateRoot(TId id, DateTimeOffset createdAt, Actor createdBy)
+        : base(id)
+    {
+        ArgumentNullException.ThrowIfNull(createdBy);
+
+        CreatedAt = createdAt;
+        CreatedBy = createdBy;
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="AuditableAggregateRoot{TId}"/> class,
+    /// reading the creation instant from the supplied <see cref="TimeProvider"/>.
+    /// </summary>
+    /// <param name="id">The strongly-typed identifier for this aggregate root.</param>
+    /// <param name="timeProvider">
+    /// The time source. Pass <c>TimeProvider.System</c> in production, or a fake provider
+    /// in tests. Never resolves to an ambient static clock.
+    /// </param>
+    /// <param name="createdBy">The actor creating this aggregate.</param>
+    protected AuditableAggregateRoot(TId id, TimeProvider timeProvider, Actor createdBy)
+        : this(id, (timeProvider ?? throw new ArgumentNullException(nameof(timeProvider)))
+            .GetUtcNow(), createdBy)
+    {
+    }
+
+    /// <inheritdoc />
+    public DateTimeOffset CreatedAt { get; protected init; }
+
+    /// <inheritdoc />
+    public Actor CreatedBy { get; protected init; }
+
+    /// <inheritdoc />
+    public DateTimeOffset? UpdatedAt { get; private set; }
+
+    /// <inheritdoc />
+    public Actor? UpdatedBy { get; private set; }
+
+    /// <summary>
+    /// Records that this aggregate was modified, updating <see cref="UpdatedAt"/> and
+    /// <see cref="UpdatedBy"/> together.
+    /// </summary>
+    /// <param name="updatedAt">The instant of the modification, in UTC.</param>
+    /// <param name="updatedBy">The actor performing the modification.</param>
+    /// <remarks>
+    /// Call this at the end of every state-mutating method. Routing all updates through a
+    /// single member is what prevents the two audit fields from drifting apart — a plain
+    /// setter on each one makes it possible to update the timestamp and forget the actor.
+    /// </remarks>
+    protected void Touch(DateTimeOffset updatedAt, Actor updatedBy)
+    {
+        ArgumentNullException.ThrowIfNull(updatedBy);
+
+        UpdatedAt = updatedAt;
+        UpdatedBy = updatedBy;
+    }
+}

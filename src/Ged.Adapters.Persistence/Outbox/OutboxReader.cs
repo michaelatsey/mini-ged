@@ -1,6 +1,5 @@
 using Dapper;
-using Ged.Adapters.Persistence.Providers;
-using Ged.Core.Ports;
+using MicroKit.Persistence.Abstractions;
 
 namespace Ged.Adapters.Persistence.Outbox;
 
@@ -19,8 +18,28 @@ namespace Ged.Adapters.Persistence.Outbox;
 /// message into memory to update a column.
 /// </para>
 /// </remarks>
-public sealed class OutboxReader(IDbConnectionFactory connections, IPersistenceProvider provider)
+public sealed class OutboxReader(IDbConnectionFactory connections)
 {
+    private const string ClaimSql = """
+        SELECT id          AS Id,
+               occurred_at AS OccurredAt,
+               type        AS Type,
+               payload     AS Payload,
+               attempts    AS Attempts
+        FROM   outbox_message
+        WHERE  processed_at IS NULL
+        ORDER  BY occurred_at
+        LIMIT  @BatchSize
+        FOR UPDATE SKIP LOCKED;
+        """;
+
+    private const string MarkProcessedSql = """
+        UPDATE outbox_message
+        SET    processed_at = @ProcessedAt,
+               error        = NULL
+        WHERE  id = ANY(@Ids);
+        """;
+
     private const string MarkFailedSql = """
         UPDATE outbox_message
         SET    attempts = attempts + 1,
@@ -38,10 +57,7 @@ public sealed class OutboxReader(IDbConnectionFactory connections, IPersistenceP
         await using var connection = await connections.OpenAsync(ct);
 
         var rows = await connection.QueryAsync<PendingMessage>(
-            new CommandDefinition(
-                provider.ClaimPendingOutboxSql,
-                new { BatchSize = batchSize },
-                cancellationToken: ct));
+            new CommandDefinition(ClaimSql, new { BatchSize = batchSize }, cancellationToken: ct));
 
         return [.. rows];
     }
@@ -58,10 +74,8 @@ public sealed class OutboxReader(IDbConnectionFactory connections, IPersistenceP
 
         await using var connection = await connections.OpenAsync(ct);
 
-        // Dapper binds the array natively on PostgreSQL (= ANY) and expands it into an IN list on
-        // SQL Server, which has no array parameter.
         await connection.ExecuteAsync(new CommandDefinition(
-            provider.MarkOutboxProcessedSql,
+            MarkProcessedSql,
             new { Ids = ids.ToArray(), ProcessedAt = processedAt },
             cancellationToken: ct));
     }

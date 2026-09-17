@@ -1,0 +1,373 @@
+# mini-ged — API reference requests
+#
+# Works in Visual Studio's .http editor and in the VS Code REST Client.
+#
+# Chained requests use response variables ({{name.response.body.$.field}}). Visual Studio supports
+# them from 17.9; older versions, and any run where a step was skipped, fall back to the @variables
+# below — paste a value there and the rest of the file keeps working.
+#
+# Sample files for the upload sections:
+#   printf '%%PDF-1.7\ncontent'                     > /tmp/sample.pdf
+#   printf 'MZ\x00\x00'                             > /tmp/forged.pdf
+#   printf 'name;value\nAtse;1\n'                   > /tmp/sample.csv
+#   printf 'nothing'                                > /tmp/sample.exe
+#   : > /tmp/empty.pdf
+
+@host = http://localhost:8080
+@v = v1
+
+# Seeded by database/Ged.Migrations/Scripts/*/0007_seed_root_folder.sql
+@rootFolderId = 00000000-0000-7000-8000-000000000001
+
+# Paste here when not chaining, or when the API requires authentication.
+@folderId =
+@documentId =
+@token =
+
+###############################################################################
+# 1. Liveness and documentation
+###############################################################################
+
+### Process answers
+GET {{host}}/health/live
+
+### Database answers — the check migrations and the API both depend on
+GET {{host}}/health/ready
+
+### The versioned OpenAPI document
+GET {{host}}/openapi/{{v}}.json
+
+### The interactive reference
+GET {{host}}/scalar
+
+###############################################################################
+# 2. Versioning — the three requests that prove it is wired
+###############################################################################
+
+### Supported versions are advertised on every response (ReportApiVersions)
+# Expect: 200, and an api-supported-versions header listing 1.0
+GET {{host}}/api/{{v}}/folders
+
+### No version in the URL
+# Expect: 404. A 200 here means AssumeDefaultVersionWhenUnspecified is not false, and the day the
+# default moves, every client that omits the version silently changes API.
+GET {{host}}/api/folders
+
+### A version that does not exist
+# Expect: 400, naming the versions that do
+GET {{host}}/api/v2/folders
+
+###############################################################################
+# 3. Folders
+###############################################################################
+
+### List the roots
+GET {{host}}/api/{{v}}/folders
+
+### List the children of a folder
+GET {{host}}/api/{{v}}/folders?parentId={{rootFolderId}}
+
+# @name createFolder
+### Create a folder under the root
+# Expect: 201, body is the new identifier, Location points at it
+POST {{host}}/api/{{v}}/folders
+Content-Type: application/json
+
+{
+  "parentId": "{{rootFolderId}}",
+  "name": "Contrats 2026",
+  "folderType": "CASE"
+}
+
+@createdFolderId = {{createFolder.response.body.$}}
+
+### Read it back, with its breadcrumb
+GET {{host}}/api/{{v}}/folders/{{createdFolderId}}
+
+### Rename it
+# Expect: 204
+PATCH {{host}}/api/{{v}}/folders/{{createdFolderId}}/name
+Content-Type: application/json
+
+{ "name": "Contrats 2026 — signés" }
+
+### Create a second folder, to move things between them
+# @name createSecondFolder
+POST {{host}}/api/{{v}}/folders
+Content-Type: application/json
+
+{
+  "parentId": "{{rootFolderId}}",
+  "name": "Archives 2025",
+  "folderType": "ARCHIVE"
+}
+
+@secondFolderId = {{createSecondFolder.response.body.$}}
+
+### Move a folder under another
+# Expect: 204
+PATCH {{host}}/api/{{v}}/folders/{{createdFolderId}}/parent
+Content-Type: application/json
+
+{ "parentId": "{{secondFolderId}}" }
+
+### Promote it back to the root
+PATCH {{host}}/api/{{v}}/folders/{{createdFolderId}}/parent
+Content-Type: application/json
+
+{ "parentId": null }
+
+###############################################################################
+# 4. Folder invariants — the refusals that prove the rules exist
+###############################################################################
+
+### A folder cannot be its own parent
+# Expect: 409, code FolderMustNotBeItsOwnParent
+PATCH {{host}}/api/{{v}}/folders/{{createdFolderId}}/parent
+Content-Type: application/json
+
+{ "parentId": "{{createdFolderId}}" }
+
+### A folder that still holds content cannot be deleted
+# Expect: 409 once a document has been uploaded into it (section 5)
+DELETE {{host}}/api/{{v}}/folders/{{createdFolderId}}
+
+### A name with a path separator is refused by the domain
+# Expect: 400, code INVALID_INPUT
+POST {{host}}/api/{{v}}/folders
+Content-Type: application/json
+
+{ "parentId": "{{rootFolderId}}", "name": "a/b", "folderType": "CASE" }
+
+###############################################################################
+# 5. Documents — the path that crosses every layer
+###############################################################################
+
+# @name uploadDocument
+### Upload
+# Crosses staging + SHA-256, format inspection, storage, both aggregates, one transaction, outbox.
+# Expect: 201, body carries documentId, versionId, blobId, deduplicated
+POST {{host}}/api/{{v}}/documents?folderId={{createdFolderId}}&docType=CONTRACT
+Content-Type: multipart/form-data; boundary=----GedBoundary
+
+------GedBoundary
+Content-Disposition: form-data; name="file"; filename="sample.pdf"
+Content-Type: application/pdf
+
+< /tmp/sample.pdf
+------GedBoundary--
+
+@uploadedDocumentId = {{uploadDocument.response.body.$.documentId}}
+
+### Read it back
+GET {{host}}/api/{{v}}/documents/{{uploadedDocumentId}}
+
+### List the documents of a folder
+GET {{host}}/api/{{v}}/documents?folderId={{createdFolderId}}&skip=0&take=50
+
+### Download the content of the current version
+# The bytes returned must be identical to the file uploaded — the one test that validates hashing,
+# storage, mapping, transaction and location resolution at once.
+GET {{host}}/api/{{v}}/documents/{{uploadedDocumentId}}/content
+
+### Upload the same bytes into another folder
+# Expect: deduplicated = true, and the SAME blobId. Content addressed by its digest, in one response.
+POST {{host}}/api/{{v}}/documents?folderId={{rootFolderId}}
+Content-Type: multipart/form-data; boundary=----GedBoundary
+
+------GedBoundary
+Content-Disposition: form-data; name="file"; filename="copie.pdf"
+Content-Type: application/pdf
+
+< /tmp/sample.pdf
+------GedBoundary--
+
+### Append a new version
+# Expect: 200, versionNumber 2
+POST {{host}}/api/{{v}}/documents/{{uploadedDocumentId}}/versions?comment=Version%20signée
+Content-Type: multipart/form-data; boundary=----GedBoundary
+
+------GedBoundary
+Content-Disposition: form-data; name="file"; filename="sample-v2.pdf"
+Content-Type: application/pdf
+
+< /tmp/sample-v2.pdf
+------GedBoundary--
+
+### Re-upload identical content as a new version
+# Expect: 409, code VersionContentMustDifferFromCurrent. A version that records no change pollutes
+# the history that audit and restore both depend on.
+POST {{host}}/api/{{v}}/documents/{{uploadedDocumentId}}/versions
+Content-Type: multipart/form-data; boundary=----GedBoundary
+
+------GedBoundary
+Content-Disposition: form-data; name="file"; filename="sample-v2.pdf"
+Content-Type: application/pdf
+
+< /tmp/sample-v2.pdf
+------GedBoundary--
+
+### Download a specific version
+GET {{host}}/api/{{v}}/documents/{{uploadedDocumentId}}/content?versionId={{uploadDocument.response.body.$.versionId}}
+
+### Rename
+PATCH {{host}}/api/{{v}}/documents/{{uploadedDocumentId}}/name
+Content-Type: application/json
+
+{ "name": "contrat-signe.pdf" }
+
+### Move to another folder
+PATCH {{host}}/api/{{v}}/documents/{{uploadedDocumentId}}/folder
+Content-Type: application/json
+
+{ "folderId": "{{secondFolderId}}" }
+
+### Delete
+# Logical only. No byte is removed here; the blobs referenced are examined days later by the
+# collector, behind a retention window.
+DELETE {{host}}/api/{{v}}/documents/{{uploadedDocumentId}}
+
+### A deleted document refuses every mutation
+# Expect: 409, code DocumentMustNotBeDeleted
+PATCH {{host}}/api/{{v}}/documents/{{uploadedDocumentId}}/name
+Content-Type: application/json
+
+{ "name": "autre.pdf" }
+
+###############################################################################
+# 6. Upload policy — every refusal it is supposed to produce
+###############################################################################
+
+### An extension outside the allowlist
+# Expect: 415, code ExtensionNotAllowed. Refused before a byte of the body is read.
+POST {{host}}/api/{{v}}/documents?folderId={{rootFolderId}}
+Content-Type: multipart/form-data; boundary=----GedBoundary
+
+------GedBoundary
+Content-Disposition: form-data; name="file"; filename="payload.exe"
+Content-Type: application/octet-stream
+
+< /tmp/sample.exe
+------GedBoundary--
+
+### A double extension
+# Expect: 415. The LAST extension is read: invoice.pdf.exe is an executable.
+POST {{host}}/api/{{v}}/documents?folderId={{rootFolderId}}
+Content-Type: multipart/form-data; boundary=----GedBoundary
+
+------GedBoundary
+Content-Disposition: form-data; name="file"; filename="invoice.pdf.exe"
+Content-Type: application/pdf
+
+< /tmp/sample.exe
+------GedBoundary--
+
+### Content that contradicts the extension
+# Expect: 415, code ContentDoesNotMatchExtension. The extension says PDF, the header says MZ, and
+# the declared Content-Type says PDF too — two of the three are strings the client chose.
+POST {{host}}/api/{{v}}/documents?folderId={{rootFolderId}}
+Content-Type: multipart/form-data; boundary=----GedBoundary
+
+------GedBoundary
+Content-Disposition: form-data; name="file"; filename="forged.pdf"
+Content-Type: application/pdf
+
+< /tmp/forged.pdf
+------GedBoundary--
+
+### An empty file
+# Expect: 415, code Empty
+POST {{host}}/api/{{v}}/documents?folderId={{rootFolderId}}
+Content-Type: multipart/form-data; boundary=----GedBoundary
+
+------GedBoundary
+Content-Disposition: form-data; name="file"; filename="empty.pdf"
+Content-Type: application/pdf
+
+< /tmp/empty.pdf
+------GedBoundary--
+
+### A document type that narrows the allowlist
+# Expect: 415 — FormatsByDocType restricts CONTRACT to pdf, so a CSV is refused even though csv is
+# in the global list.
+POST {{host}}/api/{{v}}/documents?folderId={{rootFolderId}}&docType=CONTRACT
+Content-Type: multipart/form-data; boundary=----GedBoundary
+
+------GedBoundary
+Content-Disposition: form-data; name="file"; filename="data.csv"
+Content-Type: text/csv
+
+< /tmp/sample.csv
+------GedBoundary--
+
+### The same CSV without a document type
+# Expect: 201 — it falls back to the global allowlist
+POST {{host}}/api/{{v}}/documents?folderId={{rootFolderId}}
+Content-Type: multipart/form-data; boundary=----GedBoundary
+
+------GedBoundary
+Content-Disposition: form-data; name="file"; filename="data.csv"
+Content-Type: text/csv
+
+< /tmp/sample.csv
+------GedBoundary--
+
+###############################################################################
+# 7. Not found, and other expected failures
+###############################################################################
+
+### Unknown document
+# Expect: 404, code NOT_FOUND
+GET {{host}}/api/{{v}}/documents/00000000-0000-7000-8000-ffffffffffff
+
+### Unknown folder on upload
+# Expect: 404
+POST {{host}}/api/{{v}}/documents?folderId=00000000-0000-7000-8000-ffffffffffff
+Content-Type: multipart/form-data; boundary=----GedBoundary
+
+------GedBoundary
+Content-Disposition: form-data; name="file"; filename="sample.pdf"
+Content-Type: application/pdf
+
+< /tmp/sample.pdf
+------GedBoundary--
+
+### Malformed identifier
+# Expect: 404 — the :guid route constraint never matches, so no handler runs
+GET {{host}}/api/{{v}}/documents/not-a-guid
+
+###############################################################################
+# 8. Security — what the pipeline is supposed to return
+###############################################################################
+
+### Response headers
+# Expect on an API path:
+#   X-Content-Type-Options: nosniff
+#   X-Frame-Options: DENY
+#   Content-Security-Policy: default-src 'none'; frame-ancestors 'none'; ...
+#   Cross-Origin-Resource-Policy: same-origin
+GET {{host}}/api/{{v}}/folders
+
+### The documentation gets a different policy
+# Expect: script-src 'self' 'unsafe-inline' — because this one IS a document
+GET {{host}}/scalar
+
+### With authentication enabled, no token
+# Expect: 401. In Development the fallback policy is off, so this returns 200 — which is the
+# difference to remember before concluding that authorization works.
+GET {{host}}/api/{{v}}/folders
+
+### With a token
+GET {{host}}/api/{{v}}/folders
+Authorization: Bearer {{token}}
+
+### Rate limiting
+# Expect: 429 with a Retry-After header past 300 requests a minute. Run in a loop rather than here:
+#   for i in $(seq 1 320); do curl -s -o /dev/null -w "%{http_code} " $host/api/v1/folders; done
+GET {{host}}/api/{{v}}/folders
+
+### CORS preflight from a disallowed origin
+# Expect: no Access-Control-Allow-Origin header in the response
+OPTIONS {{host}}/api/{{v}}/folders
+Origin: https://evil.example
+Access-Control-Request-Method: GET

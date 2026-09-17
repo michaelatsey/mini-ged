@@ -1,6 +1,4 @@
 using Ged.Domain.Folders;
-using Ged.Domain.Folders.Identifiers;
-using Ged.Domain.Folders.ValueObjects;
 
 namespace Ged.Features.Folders.CreateFolder;
 
@@ -34,7 +32,7 @@ public sealed class CreateFolderHandler(
 
         var actor = new Actor(command.By);
         var name = new FolderName(command.Name);
-        var type = new FolderType(command.FolderType ?? Ged.Domain.Folders.ValueObjects.FolderType.Unknown.Code);
+        var type = new FolderType(command.FolderType ?? Ged.Domain.Folders.FolderType.Unknown.Code);
         var now = clock.UtcNow;
 
         Folder folder;

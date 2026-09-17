@@ -1,8 +1,6 @@
 using Ged.Adapters.Persistence.Converters;
-using Ged.Domain.Blobs;
-using Ged.Domain.Blobs.ValueObjects;
-
 using Ged.Adapters.Persistence.Providers;
+using Ged.Domain.Blobs;
 
 namespace Ged.Adapters.Persistence.Configurations;
 

@@ -1,0 +1,51 @@
+<Solution>
+  <Folder Name="/database/">
+    <Project Path="database/Ged.Migrations/Ged.Migrations.csproj" Id="38a80029-1c40-4e11-bb1c-14479e0e30f0" />
+  </Folder>
+  <Folder Name="/hosts/">
+    <Project Path="hosts/Ged.Api/Ged.Api.csproj" />
+  </Folder>
+  <Folder Name="/libraries/">
+    <Project Path="libraries/MicroKit.Core/src/MicroKit.Core/MicroKit.Core.csproj" Id="c1776cd3-f0db-460d-b6ff-3f6028631975" />
+    <Project Path="libraries/MicroKit.Domain/MicroKit.Domain.csproj" />
+  </Folder>
+  <Folder Name="/libraries/MicroKit.Persistence/" />
+  <Folder Name="/libraries/MicroKit.Persistence/src/">
+    <Project Path="libraries/MicroKit.Persistence/src/MicroKit.Persistence.Abstractions/MicroKit.Persistence.Abstractions.csproj" />
+    <Project Path="libraries/MicroKit.Persistence/src/MicroKit.Persistence.EntityFrameworkCore.PostgreSql/MicroKit.Persistence.EntityFrameworkCore.PostgreSql.csproj" />
+    <Project Path="libraries/MicroKit.Persistence/src/MicroKit.Persistence.EntityFrameworkCore.SqlServer/MicroKit.Persistence.EntityFrameworkCore.SqlServer.csproj" />
+    <Project Path="libraries/MicroKit.Persistence/src/MicroKit.Persistence.EntityFrameworkCore/MicroKit.Persistence.EntityFrameworkCore.csproj" />
+    <Project Path="libraries/MicroKit.Persistence/src/MicroKit.Persistence.Specifications/MicroKit.Persistence.Specifications.csproj" />
+    <Project Path="libraries/MicroKit.Persistence/src/MicroKit.Persistence/MicroKit.Persistence.csproj" />
+  </Folder>
+  <Folder Name="/libraries/MicroKit.Result/" />
+  <Folder Name="/libraries/MicroKit.Result/src/">
+    <Project Path="libraries/MicroKit.Result/src/MicroKit.Result.AspNetCore/MicroKit.Result.AspNetCore.csproj" />
+    <Project Path="libraries/MicroKit.Result/src/MicroKit.Result/MicroKit.Result.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Ged.Adapters.FileTypes.FileSignatures/Ged.Adapters.FileTypes.FileSignatures.csproj" />
+    <Project Path="src/Ged.Adapters.FileTypes/Ged.Adapters.FileTypes.csproj" Id="b37a2bbc-6e8e-498b-8543-608c10eb421c" />
+    <Project Path="src/Ged.Adapters.Persistence.PostgreSql/Ged.Adapters.Persistence.PostgreSql.csproj" Id="398027ac-a80c-4c03-a053-89f7103abdcb" />
+    <Project Path="src/Ged.Adapters.Persistence.SqlServer/Ged.Adapters.Persistence.SqlServer.csproj" Id="e07db995-83ab-4508-ab1f-40a62184b2df" />
+    <Project Path="src/Ged.Adapters.Persistence/Ged.Adapters.Persistence.csproj" Id="d5db6d60-34d7-404a-a9c7-cfc1b3c6a565" />
+    <Project Path="src/Ged.Adapters.Storage.FileSystem/Ged.Adapters.Storage.FileSystem.csproj" Id="0cac557c-47cb-4d54-accf-02f37579fea8" />
+    <Project Path="src/Ged.Adapters.Storage/Ged.Adapters.Storage.csproj" Id="59cc39d8-3753-4b0a-90c7-ba6b8d87c62a" />
+    <Project Path="src/Ged.Core/Ged.Core.csproj" Id="a3dae34b-c818-46ca-9d6c-cc9b06613143" />
+    <Project Path="src/Ged.Domain/Ged.Domain.csproj" />
+    <Project Path="src/Ged.Features/Ged.Features.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Ged.Domain.Tests/Ged.Domain.Tests.csproj" Id="eda3efa4-6658-4383-9826-ce4fb9421747" />
+  </Folder>
+  <Folder Name="/Éléments de solution/">
+    <File Path=".editorconfig" />
+    <File Path=".env" />
+    <File Path=".env.example" />
+    <File Path=".github/workflows/ci.yml" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="global.json" />
+    <File Path="NuGet.Config" />
+  </Folder>
+</Solution>

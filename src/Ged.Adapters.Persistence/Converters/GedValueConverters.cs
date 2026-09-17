@@ -1,9 +1,6 @@
-using Ged.Domain.Blobs.Identifiers;
-using Ged.Domain.Blobs.ValueObjects;
-using Ged.Domain.Documents.Identifiers;
-using Ged.Domain.Documents.ValueObjects;
-using Ged.Domain.Folders.Identifiers;
-using Ged.Domain.Folders.ValueObjects;
+using Ged.Domain.Blobs;
+using Ged.Domain.Documents;
+using Ged.Domain.Folders;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace Ged.Adapters.Persistence.Converters;
@@ -26,23 +23,23 @@ namespace Ged.Adapters.Persistence.Converters;
 internal static class GedValueConverters
 {
     public static readonly ValueConverter<FolderId, Guid> FolderId =
-        new(id => id.Value, value => Ged.Domain.Folders.Identifiers.FolderId.From(value));
+        new(id => id.Value, value => Ged.Domain.Folders.FolderId.From(value));
 
     public static readonly ValueConverter<FolderId?, Guid?> NullableFolderId =
         new(id => id!.Value.Value,
-            value => value == null ? null : Ged.Domain.Folders.Identifiers.FolderId.From(value.Value));
+            value => value == null ? null : Ged.Domain.Folders.FolderId.From(value.Value));
 
     public static readonly ValueConverter<DocumentId, Guid> DocumentId =
-        new(id => id.Value, value => Ged.Domain.Documents.Identifiers.DocumentId.From(value));
+        new(id => id.Value, value => Ged.Domain.Documents.DocumentId.From(value));
 
     public static readonly ValueConverter<DocumentVersionId, Guid> DocumentVersionId =
-        new(id => id.Value, value => Ged.Domain.Documents.Identifiers.DocumentVersionId.From(value));
+        new(id => id.Value, value => Ged.Domain.Documents.DocumentVersionId.From(value));
 
     public static readonly ValueConverter<BlobId, string> BlobId =
-        new(id => id.Value, value => Ged.Domain.Blobs.Identifiers.BlobId.FromSha256(value));
+        new(id => id.Value, value => Domain.Blobs.BlobId.FromSha256(value));
 
     public static readonly ValueConverter<BlobLocationId, Guid> BlobLocationId =
-        new(id => id.Value, value => Ged.Domain.Blobs.Identifiers.BlobLocationId.From(value));
+        new(id => id.Value, value => Domain.Blobs.BlobLocationId.From(value));
 
     public static readonly ValueConverter<Actor, string> Actor =
         new(actor => actor.Value, value => new Actor(value));
@@ -67,13 +64,13 @@ internal static class GedValueConverters
         new(mime => mime.Value, value => new MimeType(value));
 
     public static readonly ValueConverter<VersionNumber, int> VersionNumber =
-        new(number => number.Value, value => Ged.Domain.Documents.ValueObjects.VersionNumber.From(value));
+        new(number => number.Value, value => Domain.Documents.VersionNumber.From(value));
 
     public static readonly ValueConverter<BlobStatus, string> BlobStatus =
-        new(status => status.Code, value => Ged.Domain.Blobs.ValueObjects.BlobStatus.From(value));
+        new(status => status.Code, value => Ged.Domain.Blobs.BlobStatus.From(value));
 
     public static readonly ValueConverter<LocationState, string> LocationState =
-        new(state => state.Code, value => Ged.Domain.Blobs.ValueObjects.LocationState.From(value));
+        new(state => state.Code, value => Domain.Blobs.LocationState.From(value));
 
     public static readonly ValueConverter<StorageProvider, string> StorageProvider =
         new(provider => provider.Name, value => new StorageProvider(value));

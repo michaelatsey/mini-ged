@@ -1,13 +1,18 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <RootNamespace>Ged.Domain</RootNamespace>
-    <IsTrimmable>true</IsTrimmable>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="MicroKit.Domain" />
-    <PackageReference Include="MicroKit.Persistence.Abstractions" />
+    <None Remove="Blobs\Events\BlobEvents.csZone.Identifier" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../libraries/MicroKit.Domain/MicroKit.Domain.csproj" />
+    <ProjectReference Include="../../libraries/MicroKit.Persistence/src/MicroKit.Persistence.Abstractions/MicroKit.Persistence.Abstractions.csproj" />
   </ItemGroup>
 
 </Project>

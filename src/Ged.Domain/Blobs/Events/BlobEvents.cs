@@ -1,5 +1,3 @@
-using Ged.Domain.Abstractions;
-
 namespace Ged.Domain.Blobs.Events;
 
 /// <summary>Raised when content is registered for the first time, with its initial location.</summary>
@@ -19,7 +17,7 @@ public sealed record BlobRegistered(
     string Bucket,
     string Key,
     string RegisteredBy,
-    DateTimeOffset OccurredAt) : GedDomainEvent(OccurredAt);
+    DateTimeOffset OccurredAt) : DomainEvent(OccurredAt);
 
 /// <summary>Raised when a copy of the content is registered on another backend.</summary>
 /// <param name="BlobId">The content digest.</param>
@@ -36,7 +34,7 @@ public sealed record BlobLocationAdded(
     string Bucket,
     string Key,
     string State,
-    DateTimeOffset OccurredAt) : GedDomainEvent(OccurredAt);
+    DateTimeOffset OccurredAt) : DomainEvent(OccurredAt);
 
 /// <summary>Raised when a copy has been confirmed to match the blob's digest.</summary>
 /// <param name="BlobId">The content digest.</param>
@@ -47,7 +45,7 @@ public sealed record BlobLocationVerified(
     string BlobId,
     Guid LocationId,
     string Provider,
-    DateTimeOffset OccurredAt) : GedDomainEvent(OccurredAt);
+    DateTimeOffset OccurredAt) : DomainEvent(OccurredAt);
 
 /// <summary>
 /// Raised when reads are switched to a different location.
@@ -68,7 +66,7 @@ public sealed record BlobPrimarySwitched(
     Guid NewLocationId,
     string PreviousProvider,
     string NewProvider,
-    DateTimeOffset OccurredAt) : GedDomainEvent(OccurredAt);
+    DateTimeOffset OccurredAt) : DomainEvent(OccurredAt);
 
 /// <summary>Raised when a superseded location is removed from the blob.</summary>
 /// <param name="BlobId">The content digest.</param>
@@ -87,7 +85,7 @@ public sealed record BlobLocationRemoved(
     string Provider,
     string Bucket,
     string Key,
-    DateTimeOffset OccurredAt) : GedDomainEvent(OccurredAt);
+    DateTimeOffset OccurredAt) : DomainEvent(OccurredAt);
 
 /// <summary>Raised when no live reference to the content could be found.</summary>
 /// <param name="BlobId">The content digest.</param>
@@ -100,14 +98,14 @@ public sealed record BlobLocationRemoved(
 public sealed record BlobMarkedOrphanCandidate(
     string BlobId,
     DateTimeOffset OrphanSince,
-    DateTimeOffset OccurredAt) : GedDomainEvent(OccurredAt);
+    DateTimeOffset OccurredAt) : DomainEvent(OccurredAt);
 
 /// <summary>Raised when a live reference appears again before the retention window elapses.</summary>
 /// <param name="BlobId">The content digest.</param>
 /// <param name="OccurredAt">The instant of the operation, in UTC.</param>
 public sealed record BlobReactivated(
     string BlobId,
-    DateTimeOffset OccurredAt) : GedDomainEvent(OccurredAt);
+    DateTimeOffset OccurredAt) : DomainEvent(OccurredAt);
 
 /// <summary>Raised once the content has been removed from every backend.</summary>
 /// <param name="BlobId">The content digest.</param>
@@ -123,4 +121,4 @@ public sealed record BlobPurged(
     long SizeBytes,
     DateTimeOffset OrphanSince,
     string PurgedBy,
-    DateTimeOffset OccurredAt) : GedDomainEvent(OccurredAt);
+    DateTimeOffset OccurredAt) : DomainEvent(OccurredAt);

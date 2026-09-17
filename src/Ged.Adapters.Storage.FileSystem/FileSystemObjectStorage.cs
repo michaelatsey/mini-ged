@@ -1,6 +1,6 @@
 using System.Runtime.CompilerServices;
 using Ged.Core.Ports;
-using Ged.Domain.Blobs.ValueObjects;
+using Ged.Domain.Blobs;
 
 namespace Ged.Adapters.Storage.FileSystem;
 

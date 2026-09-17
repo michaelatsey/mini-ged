@@ -1,6 +1,5 @@
 using Ged.Domain.Blobs;
-using Ged.Domain.Blobs.Identifiers;
-using Ged.Domain.Blobs.ValueObjects;
+
 
 namespace Ged.Features.Blobs.Jobs;
 

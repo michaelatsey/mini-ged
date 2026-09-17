@@ -1,5 +1,3 @@
-using Microsoft.EntityFrameworkCore.Metadata.Builders;
-
 namespace Ged.Adapters.Persistence.Providers;
 
 /// <summary>

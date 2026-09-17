@@ -1,5 +1,3 @@
-using Ged.Domain.Folders.Identifiers;
-
 namespace Ged.Domain.Folders;
 
 /// <summary>

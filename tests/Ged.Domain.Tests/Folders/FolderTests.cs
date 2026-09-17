@@ -1,8 +1,6 @@
 using Ged.Domain.Folders;
 using Ged.Domain.Folders.Events;
-using Ged.Domain.Folders.Identifiers;
 using Ged.Domain.Folders.Rules;
-using Ged.Domain.Folders.ValueObjects;
 
 namespace Ged.Domain.Tests.Folders;
 
@@ -45,7 +43,7 @@ public sealed class FolderTests
             .Select(_ => FolderId.New())
             .ToArray();
 
-        var act = () => Folder.CreateChild(
+        Action act = () => Folder.CreateChild(
             FolderAncestry.Of(fullChain), new FolderName("Trop profond"),
             FolderType.Case, Fixed.Now, Fixed.Me);
 
