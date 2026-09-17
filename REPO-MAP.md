@@ -1,6 +1,6 @@
 # REPO MAP — mini-ged
 
-Generated 2026-09-17 from commit `c335e2c`.
+Generated 2026-09-17 from commit `f9a8002`.
 Regenerate with `./scripts/repo-map.sh > REPO-MAP.md` — never edit by hand.
 
 ---
@@ -29,9 +29,9 @@ Ged.Adapters.Storage.FileSystem                2 files     204 lines
 Ged.Adapters.Storage                           2 files      99 lines
 Ged.Core                                       9 files     275 lines
 Ged.Domain                                    51 files    2512 lines
-Ged.Features                                  48 files    3376 lines
+Ged.Features                                  48 files    3402 lines
 Ged.Domain.Tests                              10 files     765 lines
-Ged.Features.Tests                            15 files    1178 lines
+Ged.Features.Tests                            17 files    1375 lines
 ```
 
 ## Reference graph
@@ -259,6 +259,9 @@ src/Ged.Adapters.FileTypes/registration.md ```csharp
 ## Recent history
 
 ```
+f9a8002 docs(claude-md): correct the four statements the code contradicts (#17)
+41f3ee4 fix(sql): declare every parameter's type, or refuse to send it (#15)
+ad61d58 fix(uploads): bound a request by the configured ceiling, and size the container for it (#14)
 c335e2c fix(blobs): restore purged digests and stop the purge racing a dedup (#11)
 bcb6950 chore: add a /fix-issue project skill (#10)
 d4edfbc chore(compose): bind-mount the filesystem storage (#3)
@@ -268,7 +271,4 @@ c360c92 chore: add CLAUDE.md for Claude Code sessions (#2)
 747b270 feat(api): versioned composition root with OpenAPI, security and throttling
 74d0335 feat(features): vertical slices, storage ports and a filesystem backend
 3566a4b refactor(persistence): multi-provider PostgreSQL and SQL Server, drop obsolete xmin API
-2329518 feat(persistence): EF Core write side, Dapper reads, DbUp schema, outbox
-e78d58e feat(domain): blob aggregate with locations and retention lifecycle
-7467c83 feat(domain): document and folder aggregates
 ```
