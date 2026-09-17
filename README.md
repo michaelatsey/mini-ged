@@ -209,7 +209,7 @@ concurrent ones, and neither covers the other's case.
 3. `src/Ged.Domain/Blobs/Blob.cs` — locations, migration path, retention window
 4. `src/Ged.Domain/Folders/FolderAncestry.cs` — how hierarchy rules stay inside the domain
 5. `docs/uploads.md`, `docs/api.md`, `docs/persistence-providers.md`, `docs/containers.md`
-6. `docs/microkit-deviations.md` — the workarounds, and what would remove them
+6. `docs/microkit-deviations.md` — why there are none left, and the EF mapping bets it records
 
 ## Status
 
@@ -275,8 +275,8 @@ them. Until they do, deleted content is never reclaimed and a silently missing c
 
 ### 5. Multi-tenancy ◆
 
-`ITenantContext` exists; the isolation strategy does not. Three options, and the choice decides the
-persistence adapters rather than the domain:
+Nothing tenant-aware exists yet — no `ITenantContext`, no tenant column, no filter. Three options,
+and the choice decides the persistence adapters rather than the domain:
 
 ```
 database per tenant    strongest isolation, highest operational cost
@@ -392,8 +392,9 @@ IObjectStorage + registry + resolver     any product that stores files
 StagedContent + upload validation        any product that accepts them
 IPersistenceProvider                     any product on two engines
 the outbox                               any product that needs events
-ITenantContext                           any product with more than one customer
 ```
+
+Multi-tenancy is the ◆ above, not a line here: nothing tenant-aware is written yet.
 
 The domain — documents, folders, blobs — is GED-specific and would not travel. That split is the
 point of the layout, and it is the reason the ports are where they are.
