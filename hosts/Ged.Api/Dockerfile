@@ -36,6 +36,8 @@ COPY ["src/Ged.Adapters.Storage.FileSystem/Ged.Adapters.Storage.FileSystem.cspro
 COPY ["src/Ged.Adapters.Persistence/Ged.Adapters.Persistence.csproj", "src/Ged.Adapters.Persistence/"]
 COPY ["src/Ged.Adapters.Persistence.PostgreSql/Ged.Adapters.Persistence.PostgreSql.csproj", "src/Ged.Adapters.Persistence.PostgreSql/"]
 COPY ["src/Ged.Adapters.Persistence.SqlServer/Ged.Adapters.Persistence.SqlServer.csproj", "src/Ged.Adapters.Persistence.SqlServer/"]
+COPY ["src/Ged.Adapters.FileTypes/Ged.Adapters.FileTypes.csproj", "src/Ged.Adapters.FileTypes/"]
+COPY ["src/Ged.Adapters.FileTypes.FileSignatures/Ged.Adapters.FileTypes.FileSignatures.csproj", "src/Ged.Adapters.FileTypes.FileSignatures/"]
 
 COPY ["libraries/MicroKit.Domain/MicroKit.Domain.csproj", "libraries/MicroKit.Domain/"]
 COPY ["libraries/MicroKit.Core/src/MicroKit.Core/MicroKit.Core.csproj", "libraries/MicroKit.Core/src/MicroKit.Core/"]
