@@ -20,7 +20,16 @@ x-api-hardening: &api-hardening
         # StagedContent buffers an upload here while computing its SHA-256, so this is not optional:
         # with read_only and no tmpfs, every upload fails. noexec because this is the one writable path
         # and it is where user-supplied bytes land.
-        - /tmp:rw,noexec,nosuid,size=512m
+        #
+        # The size is a share of the memory limit below, not an independent number: tmpfs pages are
+        # charged to the container, so a tmpfs as large as the limit is an OOM kill one upload away.
+        # A quarter of the limit is what the GC's default 75% heap budget leaves.
+        #
+        # Every upload lands here twice — once as the form buffer the IFormFile binding writes, once
+        # as StagedContent's copy — and the form buffer also carries the multipart envelope the
+        # transport admits on top of the ceiling. So one upload costs 2 × 48 MiB + 1 MiB, and 256m
+        # holds two of them arriving together with room to spare.
+        - /tmp:rw,noexec,nosuid,size=256m
 
 services:
     postgres:
@@ -145,9 +154,13 @@ services:
             Auth__Authority: ${AUTH_AUTHORITY:-https://localhost:5001}
             Auth__Audience: ${AUTH_AUDIENCE:-ged-api}
             Cors__Origins__0: ${CORS_ORIGIN:-https://localhost:5173}
+            # The ceiling this stack was sized for, and the number Kestrel's request body limit is
+            # derived from. Two concurrent uploads at 48 MiB fit the 256m tmpfs above; raising it
+            # means raising the tmpfs, and the memory limit with it. The API's own default is
+            # 256 MiB, which this container cannot hold.
+            Ged__Uploads__MaxSizeBytes: "50331648"
         #   Ged__Uploads__AllowedFormats__0: pdf
         #   Ged__Uploads__AllowedFormats__1: docx
-        #   Ged__Uploads__MaxSizeBytes: "104857600"
         #   Ged__Uploads__MaxSizeByFormat__csv: "5242880"
         ports:
             - "8080:8080"
@@ -171,8 +184,10 @@ services:
             resources:
                 limits:
                     # .NET reads cgroup limits and sizes its heap from them, so stating a limit is also how the
-                    # garbage collector learns its budget.
-                    memory: 512M
+                    # garbage collector learns its budget. The tmpfs is charged to this number too, which is
+                    # why it takes a quarter of it and no more: the GC's default heap budget is the other 75%,
+                    # and a tmpfs that can fill the limit on its own kills every in-flight request.
+                    memory: 1G
                     cpus: "1.0"
 
 volumes:

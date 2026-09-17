@@ -158,7 +158,7 @@ In Kubernetes this is an init container or a Job with the same property.
 security_opt: [no-new-privileges:true]
 cap_drop:     [ALL]
 read_only:    true
-tmpfs:        [/tmp:rw,noexec,nosuid,size=512m]
+tmpfs:        [/tmp:rw,noexec,nosuid,size=256m]
 ```
 
 | Setting | What it closes |
@@ -167,7 +167,7 @@ tmpfs:        [/tmp:rw,noexec,nosuid,size=512m]
 | `cap_drop: ALL` | every capability; the app binds 8080, which needs none |
 | `read_only` | persistence after code execution |
 | `noexec` on `/tmp` | running an uploaded file from the one writable path |
-| `size=512m` on `/tmp` | an upload filling the host disk |
+| `size=256m` on `/tmp` | an upload filling the host disk — and, since tmpfs pages are charged to the container, an upload evicting the runtime |
 
 The `noexec` flag deserves the emphasis: `/tmp` is where arbitrary user-supplied bytes land, and it
 is the one place in the container that is writable.
@@ -178,13 +178,39 @@ is the one place in the container that is writable.
 deploy:
   resources:
     limits:
-      memory: 512M
+      memory: 1G
       cpus: "1.0"
 ```
 
 .NET reads cgroup limits and sizes its heap from them, so declaring a limit is also how the garbage
 collector learns how much memory it may use. A container with no limit gets a GC that assumes it owns
 the host.
+
+The tmpfs comes out of the same number, which is the part that is easy to miss. `/tmp` is memory, so
+a `size=` equal to the limit lets one upload push the container into an OOM kill — and an OOM kill
+takes every in-flight request with it, not just the upload that caused it. Three numbers have to
+agree:
+
+```
+(MaxSizeBytes × 2 copies + envelope) × concurrent uploads  ≤  tmpfs  ≤  memory limit / 4
+
+     (48 MiB × 2         + 1 MiB)    ×         2   =  194 MiB  ≤  256m  ≤   256 MiB
+```
+
+Two copies because the body is written to `/tmp` twice: once as the buffer the `IFormFile` binding
+produces, once as `StagedContent`'s own. The envelope is counted with them because the transport
+admits the ceiling *plus* a mebibyte for the multipart framing, and the form buffer holds whatever
+arrived — while `StagedContent` stops at the ceiling, it stops there having written that much.
+
+A quarter of the limit because the GC claims the other 75% by default. That share is a cap on the
+managed heap rather than a reservation — this API sits around 70 MiB in practice — so the tmpfs
+sitting exactly on its quarter is the boundary, not an overcommit.
+
+`ContainerUploadBudgetTests` reads the `api` service out of `compose.yaml` and fails when the numbers
+stop agreeing, which is the only place the arithmetic is enforced. It reads that service rather than
+the file at large: a limit belonging to `postgres` would otherwise satisfy an assertion about the
+API, and it checks that `api` still merges `*api-hardening`, since the tmpfs reaches the container
+only through that merge key.
 
 `DOTNET_gcServer=1` is set in the image. Revisit it below roughly one CPU: server GC allocates a heap
 per core and costs more than it returns on a small container.
@@ -203,7 +229,7 @@ cp .env.example .env     # local only; .env is gitignored
 
 ```bash
 docker compose up --build                                  # PostgreSQL
-docker compose --profile sqlserver up --build              # SQL Server
+docker compose --profile sqlserver up --build              # adds SQL Server; api stays on postgres
 docker compose -f compose.yaml -f compose.probe.yaml up    # with the probe sidecar
 
 # http://localhost:8080/scalar      API reference, version selector

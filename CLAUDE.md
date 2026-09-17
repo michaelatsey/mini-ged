@@ -19,9 +19,15 @@ dotnet build -c Release
 # It prints the missing COPY lines ready to paste.
 ./scripts/check-dockerfile-copies.sh hosts/Ged.Api/Dockerfile
 
-docker compose up --build                       # --profile sqlserver for the other engine
+docker compose up --build                       # PostgreSQL, the schema runner, the API
 ./scripts/audit.sh                              # before every push; the repository is public
 ./scripts/repo-map.sh > REPO-MAP.md             # after finishing a piece of work
+
+# `--profile` is a top-level flag: after `up` it is `unknown flag: --profile`. And it only adds the
+# SQL Server container and its migrations — the `api` service keeps `Ged__Provider: postgres`, so
+# this does NOT exercise the API against SQL Server. Override the provider and the connection string
+# to do that.
+docker compose --profile sqlserver up --build
 ```
 
 ---
