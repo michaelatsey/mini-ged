@@ -11,165 +11,171 @@
 name: mini-ged
 
 x-api-hardening: &api-hardening
-  security_opt:
-    - no-new-privileges:true
-  cap_drop:
-    - ALL
-  read_only: true
-  tmpfs:
-    # StagedContent buffers an upload here while computing its SHA-256, so this is not optional:
-    # with read_only and no tmpfs, every upload fails. noexec because this is the one writable path
-    # and it is where user-supplied bytes land.
-    - /tmp:rw,noexec,nosuid,size=512m
+    security_opt:
+        - no-new-privileges:true
+    cap_drop:
+        - ALL
+    read_only: true
+    tmpfs:
+        # StagedContent buffers an upload here while computing its SHA-256, so this is not optional:
+        # with read_only and no tmpfs, every upload fails. noexec because this is the one writable path
+        # and it is where user-supplied bytes land.
+        - /tmp:rw,noexec,nosuid,size=512m
 
 services:
-  postgres:
-    image: postgres:18-alpine
-    environment:
-      POSTGRES_USER: ged
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ged}
-      POSTGRES_DB: ged
-    ports:
-      - "5432:5432"
-    volumes:
-      # PostgreSQL 18+ : le montage vise le dossier PARENT, pas .../data.
-      # PGDATA vaut désormais /var/lib/postgresql/18/docker, et monter le parent permet à une
-      # future 19 de créer son propre sous-dossier à côté — ce qui rend `pg_upgrade --link`
-      # possible sans franchir une frontière de point de montage.
-      #
-      # Ne PAS forcer PGDATA=/var/lib/postgresql/data pour « retrouver » l'ancien chemin : ça
-      # fonctionne, et ça reprend exactement le problème que cette version vient de corriger.
-      - postgres-data:/var/lib/postgresql
-    healthcheck:
-      # The API waits on this rather than on a delay: a container that is running is not a database
-      # that accepts connections.
-      test: ["CMD-SHELL", "pg_isready -U ged -d ged"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-      start_period: 10s
+    postgres:
+        image: postgres:18-alpine
+        environment:
+            POSTGRES_USER: ged
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ged}
+            POSTGRES_DB: ged
+        ports:
+            - "5432:5432"
+        volumes:
+            # PostgreSQL 18+ : le montage vise le dossier PARENT, pas .../data.
+            # PGDATA vaut désormais /var/lib/postgresql/18/docker, et monter le parent permet à une
+            # future 19 de créer son propre sous-dossier à côté — ce qui rend `pg_upgrade --link`
+            # possible sans franchir une frontière de point de montage.
+            #
+            # Ne PAS forcer PGDATA=/var/lib/postgresql/data pour « retrouver » l'ancien chemin : ça
+            # fonctionne, et ça reprend exactement le problème que cette version vient de corriger.
+            - postgres-data:/var/lib/postgresql
+        healthcheck:
+            # The API waits on this rather than on a delay: a container that is running is not a database
+            # that accepts connections.
+            test: [ "CMD-SHELL", "pg_isready -U ged -d ged" ]
+            interval: 5s
+            timeout: 3s
+            retries: 20
+            start_period: 10s
 
-  sqlserver:
-    image: mcr.microsoft.com/mssql/server:2022-latest
-    profiles: [sqlserver]
-    environment:
-      ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:-Ged!Passw0rd}
-      MSSQL_PID: Developer
-    ports:
-      - "1433:1433"
-    volumes:
-      - sqlserver-data:/var/opt/mssql
-    healthcheck:
-      test:
-        - CMD-SHELL
-        # -C  accepte le certificat auto-signé (obligatoire avec les outils ODBC 18)
-        # -b  renvoie un code non nul en cas d'erreur — sans lui, sqlcmd sort en 0 même
-        #     après un échec, et le conteneur se déclare sain à tort
-        # -l  délai de login : borne l'attente côté client, sinon la sonde pend jusqu'au
-        #     timeout Docker, qui la tue sans jamais dire pourquoi
-        # -o  seul le code de sortie compte
-        - >-
-          /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$$MSSQL_SA_PASSWORD"
-          -C -b -l 15 -o /dev/null -Q "SELECT 1" || exit 1
-      interval: 15s
-      # Doit dépasser -l, sinon Docker tue la commande avant qu'elle puisse échouer
-      # proprement — et le diagnostic devient "timeout" au lieu de la vraie erreur.
-      timeout: 30s
-      retries: 10
-      start_period: 60s
+    sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        profiles: [ sqlserver ]
+        environment:
+            ACCEPT_EULA: "Y"
+            MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:-Ged!Passw0rd}
+            MSSQL_PID: Developer
+        ports:
+            - "1433:1433"
+        volumes:
+            - sqlserver-data:/var/opt/mssql
+        healthcheck:
+            test:
+                - CMD-SHELL
+                # -C  accepte le certificat auto-signé (obligatoire avec les outils ODBC 18)
+                # -b  renvoie un code non nul en cas d'erreur — sans lui, sqlcmd sort en 0 même
+                #     après un échec, et le conteneur se déclare sain à tort
+                # -l  délai de login : borne l'attente côté client, sinon la sonde pend jusqu'au
+                #     timeout Docker, qui la tue sans jamais dire pourquoi
+                # -o  seul le code de sortie compte
+                - >-
+                  /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -C -b -l 15 -o /dev/null -Q "SELECT 1" || exit 1
+            interval: 15s
+            # Doit dépasser -l, sinon Docker tue la commande avant qu'elle puisse échouer
+            # proprement — et le diagnostic devient "timeout" au lieu de la vraie erreur.
+            timeout: 30s
+            retries: 10
+            start_period: 60s
 
-  migrations:
-    build:
-      context: .
-      dockerfile: database/Ged.Migrations/Dockerfile
-    environment:
-      # Local only. The SQL Server image ships no user database at all, so without this the first
-      # connection fails; the PostgreSQL image creates POSTGRES_DB at init and does not need it.
-      # Both are set so the two paths stay identical — a difference between engines that exists only
-      # in the compose file is one nobody remembers when the SQL Server profile finally gets used.
-      #
-      # Deliberately NOT set in production: creating a database requires rights the migration
-      # identity should not hold, and a runner that can CREATE DATABASE can also create the wrong one.
-      GED_ENSURE_DATABASE: "true"
-    command:
-      - --provider
-      - postgres
-      - --connection
-      - Host=postgres;Port=5432;Database=ged;Username=ged;Password=${POSTGRES_PASSWORD:-ged}
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: "no"
-    security_opt: [no-new-privileges:true]
-    cap_drop: [ALL]
-    read_only: true
+    migrations:
+        build:
+            context: .
+            dockerfile: database/Ged.Migrations/Dockerfile
+        environment:
+            # Local only. The SQL Server image ships no user database at all, so without this the first
+            # connection fails; the PostgreSQL image creates POSTGRES_DB at init and does not need it.
+            # Both are set so the two paths stay identical — a difference between engines that exists only
+            # in the compose file is one nobody remembers when the SQL Server profile finally gets used.
+            #
+            # Deliberately NOT set in production: creating a database requires rights the migration
+            # identity should not hold, and a runner that can CREATE DATABASE can also create the wrong one.
+            GED_ENSURE_DATABASE: "true"
+        command:
+            - --provider
+            - postgres
+            - --connection
+            - Host=postgres;Port=5432;Database=ged;Username=ged;Password=${POSTGRES_PASSWORD:-ged}
+        depends_on:
+            postgres:
+                condition: service_healthy
+        restart: "no"
+        security_opt: [ no-new-privileges:true ]
+        cap_drop: [ ALL ]
+        read_only: true
 
-  migrations-sqlserver:
-    build:
-      context: .
-      dockerfile: database/Ged.Migrations/Dockerfile
-    environment:
-      # Local only. The SQL Server image ships no user database at all, so without this the first
-      # connection fails; the PostgreSQL image creates POSTGRES_DB at init and does not need it.
-      # Both are set so the two paths stay identical — a difference between engines that exists only
-      # in the compose file is one nobody remembers when the SQL Server profile finally gets used.
-      #
-      # Deliberately NOT set in production: creating a database requires rights the migration
-      # identity should not hold, and a runner that can CREATE DATABASE can also create the wrong one.
-      GED_ENSURE_DATABASE: "true"
-    profiles: [sqlserver]
-    command:
-      - --provider
-      - sqlserver
-      - --connection
-      - Server=sqlserver,1433;Database=ged;User Id=sa;Password=${MSSQL_SA_PASSWORD:-Ged!Passw0rd};TrustServerCertificate=true
-    depends_on:
-      sqlserver:
-        condition: service_healthy
-    restart: "no"
-    security_opt: [no-new-privileges:true]
-    cap_drop: [ALL]
-    read_only: true
+    migrations-sqlserver:
+        build:
+            context: .
+            dockerfile: database/Ged.Migrations/Dockerfile
+        environment:
+            # Local only. The SQL Server image ships no user database at all, so without this the first
+            # connection fails; the PostgreSQL image creates POSTGRES_DB at init and does not need it.
+            # Both are set so the two paths stay identical — a difference between engines that exists only
+            # in the compose file is one nobody remembers when the SQL Server profile finally gets used.
+            #
+            # Deliberately NOT set in production: creating a database requires rights the migration
+            # identity should not hold, and a runner that can CREATE DATABASE can also create the wrong one.
+            GED_ENSURE_DATABASE: "true"
+        profiles: [ sqlserver ]
+        command:
+            - --provider
+            - sqlserver
+            - --connection
+            - Server=sqlserver,1433;Database=ged;User Id=sa;Password=${MSSQL_SA_PASSWORD:-Ged!Passw0rd};TrustServerCertificate=true
+        depends_on:
+            sqlserver:
+                condition: service_healthy
+        restart: "no"
+        security_opt: [ no-new-privileges:true ]
+        cap_drop: [ ALL ]
+        read_only: true
 
-  api:
-    <<: *api-hardening
-    build:
-      context: .
-      dockerfile: hosts/Ged.Api/Dockerfile
-    environment:
-      ASPNETCORE_ENVIRONMENT: Development
-      ConnectionStrings__Ged: Host=postgres;Port=5432;Database=ged;Username=ged;Password=${POSTGRES_PASSWORD:-ged}
-      Ged__Provider: postgres
-      Ged__PostgresMajorVersion: "18"
-      Ged__Storage__RootPath: /data/storage
-      Auth__Authority: ${AUTH_AUTHORITY:-https://localhost:5001}
-      Auth__Audience: ${AUTH_AUDIENCE:-ged-api}
-      Cors__Origins__0: ${CORS_ORIGIN:-https://localhost:5173}
-    #   Ged__Uploads__AllowedFormats__0: pdf
-    #   Ged__Uploads__AllowedFormats__1: docx
-    #   Ged__Uploads__MaxSizeBytes: "104857600"
-    #   Ged__Uploads__MaxSizeByFormat__csv: "5242880"
-    ports:
-      - "8080:8080"
-    volumes:
-      - ged-storage:/data/storage
-    depends_on:
-      postgres:
-        condition: service_healthy
-      migrations:
-        # The API never starts against a schema that has not been taken forward. A failed migration
-        # stops the deployment here rather than surfacing as a missing-column error under traffic.
-        condition: service_completed_successfully
-    deploy:
-      resources:
-        limits:
-          # .NET reads cgroup limits and sizes its heap from them, so stating a limit is also how the
-          # garbage collector learns its budget.
-          memory: 512M
-          cpus: "1.0"
+    api:
+        <<: *api-hardening
+        build:
+            context: .
+            dockerfile: hosts/Ged.Api/Dockerfile
+        environment:
+            ASPNETCORE_ENVIRONMENT: Development
+            ConnectionStrings__Ged: Host=postgres;Port=5432;Database=ged;Username=ged;Password=${POSTGRES_PASSWORD:-ged}
+            Ged__Provider: postgres
+            Ged__PostgresMajorVersion: "18"
+            Ged__Storage__RootPath: /data/storage
+            Auth__Authority: ${AUTH_AUTHORITY:-https://localhost:5001}
+            Auth__Audience: ${AUTH_AUDIENCE:-ged-api}
+            Cors__Origins__0: ${CORS_ORIGIN:-https://localhost:5173}
+        #   Ged__Uploads__AllowedFormats__0: pdf
+        #   Ged__Uploads__AllowedFormats__1: docx
+        #   Ged__Uploads__MaxSizeBytes: "104857600"
+        #   Ged__Uploads__MaxSizeByFormat__csv: "5242880"
+        ports:
+            - "8080:8080"
+        volumes:
+            # A bind mount rather than a named volume, deliberately. The filesystem adapter IS the
+            # development backend: seeing what it writes — the sharding, the digest-named files, what a
+            # purge leaves behind — is the point, and a named volume needs a throwaway container for
+            # every look. The two paths mirror each other, so the line reads on its own.
+            #
+            # postgres-data and sqlserver-data stay named: nobody opens them, and a bind mount of a
+            # database directory is slow and fragile on Docker Desktop.
+            - ./storage:/data/storage
+        depends_on:
+            postgres:
+                condition: service_healthy
+            migrations:
+                # The API never starts against a schema that has not been taken forward. A failed migration
+                # stops the deployment here rather than surfacing as a missing-column error under traffic.
+                condition: service_completed_successfully
+        deploy:
+            resources:
+                limits:
+                    # .NET reads cgroup limits and sizes its heap from them, so stating a limit is also how the
+                    # garbage collector learns its budget.
+                    memory: 512M
+                    cpus: "1.0"
 
 volumes:
-  postgres-data:
-  sqlserver-data:
-  ged-storage:
+    postgres-data:
+    sqlserver-data:
+    ged-storage:
