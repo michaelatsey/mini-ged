@@ -92,7 +92,15 @@ public sealed class AddDocumentVersionHandler(
         var blobId = BlobId.FromSha256(staged.Digest);
         var existing = await blobs.FindAsync(blobId, ct);
 
-        if (existing is null || existing.IsPurged)
+        if (existing is not null && !existing.IsPurged)
+        {
+            // The bytes are already there, but an orphan candidate is a blob the collector may
+            // remove, so its window has to close — and closing it writes the row, which is what
+            // gives the concurrency token something to detect the collector with. On an active
+            // blob the call does nothing, which is all that is needed there.
+            existing.Reactivate(now, actor);
+        }
+        else
         {
             var storage = storages.Primary;
             var key = storage.KeyFor(staged.Digest);
@@ -108,7 +116,10 @@ public sealed class AddDocumentVersionHandler(
             }
             else
             {
-                existing.Reactivate(now, actor);
+                // The digest was purged and has been uploaded again: the row comes back at the
+                // address the bytes were just written to, because a revived blob with no location
+                // has no read path.
+                existing.Restore(storage.Provider, key, now, actor);
             }
         }
 

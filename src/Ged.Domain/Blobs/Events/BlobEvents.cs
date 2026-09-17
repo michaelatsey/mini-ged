@@ -107,6 +107,30 @@ public sealed record BlobReactivated(
     string BlobId,
     DateTimeOffset OccurredAt) : DomainEvent(OccurredAt);
 
+/// <summary>Raised when a purged digest is uploaded again and its row comes back into service.</summary>
+/// <param name="BlobId">The content digest.</param>
+/// <param name="SizeBytes">The size of the content, in bytes. Unchanged — the digest is the content.</param>
+/// <param name="LocationId">The location the bytes were written to again.</param>
+/// <param name="Provider">The storage backend now holding them.</param>
+/// <param name="Bucket">The container within that backend.</param>
+/// <param name="Key">The object key within that container.</param>
+/// <param name="RestoredBy">The actor whose upload brought the content back.</param>
+/// <param name="OccurredAt">The instant of the operation, in UTC.</param>
+/// <remarks>
+/// Distinct from <see cref="BlobReactivated"/>, which closes a retention window on content that
+/// never left. This one says the bytes were gone and are back, which is what a consumer holding a
+/// cached "this digest no longer exists" answer needs to hear.
+/// </remarks>
+public sealed record BlobRestored(
+    string BlobId,
+    long SizeBytes,
+    Guid LocationId,
+    string Provider,
+    string Bucket,
+    string Key,
+    string RestoredBy,
+    DateTimeOffset OccurredAt) : DomainEvent(OccurredAt);
+
 /// <summary>Raised once the content has been removed from every backend.</summary>
 /// <param name="BlobId">The content digest.</param>
 /// <param name="SizeBytes">The size that was reclaimed, in bytes.</param>
@@ -114,7 +138,8 @@ public sealed record BlobReactivated(
 /// <param name="PurgedBy">The actor — usually a collector — that performed the purge.</param>
 /// <param name="OccurredAt">The instant of the operation, in UTC.</param>
 /// <remarks>
-/// Records a removal that already happened; it does not request one. Terminal state.
+/// Records a removal that already happened; it does not request one. The row survives it, and
+/// <see cref="BlobRestored"/> is what follows if the same content is ever uploaded again.
 /// </remarks>
 public sealed record BlobPurged(
     string BlobId,

@@ -116,7 +116,17 @@ public sealed class UploadDocumentHandler(
         var existing = await blobs.FindAsync(blobId, ct);
         var deduplicated = existing is not null && !existing.IsPurged;
 
-        if (!deduplicated)
+        if (deduplicated)
+        {
+            // Closing the retention window is what makes the new reference safe: a blob left as an
+            // orphan candidate is one the collector is entitled to remove. Reactivating also writes
+            // the row, which is what gives the concurrency token something to compare if the
+            // collector is working on this very digest at this instant. On an already-active blob
+            // the call does nothing, and nothing is needed — a blob cannot become purge-eligible
+            // inside one request, because its retention window has to elapse first.
+            existing!.Reactivate(now, actor);
+        }
+        else
         {
             var storage = storages.Primary;
             var key = storage.KeyFor(staged.Digest);
@@ -138,8 +148,9 @@ public sealed class UploadDocumentHandler(
             else
             {
                 // The digest was purged and has been uploaded again. The row is kept for audit, so
-                // the blob is revived rather than re-registered.
-                existing.Reactivate(now, actor);
+                // the blob is restored at the address the bytes were just written to — reactivating
+                // it would leave it with no location to read from.
+                existing.Restore(storage.Provider, key, now, actor);
             }
         }
 

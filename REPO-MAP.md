@@ -1,6 +1,6 @@
 # REPO MAP — mini-ged
 
-Generated 2026-09-17 from commit `680fa01`.
+Generated 2026-09-17 from commit `bcb6950`.
 Regenerate with `./scripts/repo-map.sh > REPO-MAP.md` — never edit by hand.
 
 ---
@@ -28,9 +28,10 @@ Ged.Adapters.Persistence                      21 files    1131 lines
 Ged.Adapters.Storage.FileSystem                2 files     204 lines
 Ged.Adapters.Storage                           2 files      99 lines
 Ged.Core                                       9 files     275 lines
-Ged.Domain                                    51 files    2416 lines
-Ged.Features                                  47 files    3193 lines
-Ged.Domain.Tests                              10 files     718 lines
+Ged.Domain                                    51 files    2512 lines
+Ged.Features                                  47 files    3292 lines
+Ged.Domain.Tests                              10 files     765 lines
+Ged.Features.Tests                            13 files     919 lines
 ```
 
 ## Reference graph
@@ -89,17 +90,24 @@ Ged.Features
 Ged.Domain.Tests
     -> Ged.Domain 
     packages: 4
+Ged.Features.Tests
+    -> Ged.Features 
+    packages: 4
 ```
 
 ## Layout
 
 ```
+.claude/hooks
+.claude/settings.json
+.claude/skills
 .devcontainer/devcontainer.json
 .devcontainer/docker-compose.yml
 .github/workflows
 database/Ged.Migrations
 docs/api.md
 docs/containers.md
+docs/database-access.md
 docs/domain-boundaries.md
 docs/microkit-deviations.md
 docs/persistence-providers.md
@@ -110,6 +118,9 @@ libraries/MicroKit.Core
 libraries/MicroKit.Domain
 libraries/MicroKit.Persistence
 libraries/MicroKit.Result
+scripts/audit.sh
+scripts/check-dockerfile-copies.sh
+scripts/repo-map.sh
 scripts/smoke.sh
 src/Ged.Adapters.FileTypes
 src/Ged.Adapters.FileTypes.FileSignatures
@@ -122,6 +133,7 @@ src/Ged.Core
 src/Ged.Domain
 src/Ged.Features
 tests/Ged.Domain.Tests
+tests/Ged.Features.Tests
 ```
 
 ## Domain surface
@@ -229,9 +241,13 @@ SqlServer/0007_seed_root_folder.sql
 ## Documentation
 
 ```
+.claude/skills/fix-issue/SKILL.md        ---
+CLAUDE.md                                CLAUDE.md — mini-ged
 README.md                                mini-ged
+REPO-MAP.md                              REPO MAP — mini-ged
 docs/api.md                              The API surface
 docs/containers.md                       Containers
+docs/database-access.md                  Connecting to the databases
 docs/domain-boundaries.md                What this domain does not guarantee
 docs/microkit-deviations.md              Deviations from MicroKit.Domain
 docs/persistence-providers.md            Persistence: what differs between PostgreSQL and SQL Server
@@ -243,6 +259,10 @@ src/Ged.Adapters.FileTypes/registration.md ```csharp
 ## Recent history
 
 ```
+bcb6950 chore: add a /fix-issue project skill (#10)
+d4edfbc chore(compose): bind-mount the filesystem storage (#3)
+c360c92 chore: add CLAUDE.md for Claude Code sessions (#2)
+6e55ac4 Repository tooling, database documentation, and a Dockerfile fix (#1)
 680fa01 feat: mini-ged — document management platform on .NET 10
 747b270 feat(api): versioned composition root with OpenAPI, security and throttling
 74d0335 feat(features): vertical slices, storage ports and a filesystem backend

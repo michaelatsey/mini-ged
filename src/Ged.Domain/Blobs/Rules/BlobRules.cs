@@ -3,9 +3,10 @@ namespace Ged.Domain.Blobs.Rules;
 /// <summary>Prevents any mutation of a purged blob.</summary>
 /// <param name="status">The blob's current status.</param>
 /// <remarks>
-/// Purging is terminal. Once the bytes are gone from every backend there is nothing left for a
-/// state transition to describe, and allowing one would produce a record that claims content
-/// exists when it does not.
+/// Once the bytes are gone from every backend there is nothing left for a state transition to
+/// describe, and allowing one would produce a record that claims content exists when it does not.
+/// <see cref="Blob.Restore"/> is the single exception, and only because it arrives carrying the
+/// address the bytes were just written to again.
 /// </remarks>
 public sealed class BlobMustNotBePurgedRule(BlobStatus status) : BusinessRule
 {
@@ -133,4 +134,24 @@ public sealed class BlobMustBeAnAgedOrphanToPurgeRule(
 
     /// <inheritdoc />
     protected override object?[] GetEqualityComponents() => [status, orphanSince, cutoff];
+}
+
+/// <summary>Restricts restoring to a blob whose content really has been removed.</summary>
+/// <param name="status">The blob's current status.</param>
+/// <remarks>
+/// Restoring registers a location for bytes that have just been written again. On a blob that
+/// still holds one it would produce a second primary, and on an orphan candidate it would paper
+/// over the reactivation the caller actually meant — so the transition is confined to the one
+/// state in which the blob has no location left at all.
+/// </remarks>
+public sealed class BlobMustBePurgedToRestoreRule(BlobStatus status) : BusinessRule
+{
+    /// <inheritdoc />
+    public override bool IsBroken() => status != BlobStatus.Purged;
+
+    /// <inheritdoc />
+    public override string Message => "Only a purged blob can be restored.";
+
+    /// <inheritdoc />
+    protected override object?[] GetEqualityComponents() => [status];
 }
