@@ -26,6 +26,11 @@ namespace Ged.Domain.Blobs;
 /// <see cref="MarkPurged"/> records a removal a collector already performed. No method on this
 /// type deletes a byte.
 /// </para>
+/// <para>
+/// <see cref="Restore"/> is the way back from a purge, and it exists because the identifier is the
+/// content: uploading the same file again resolves to this very row, which is kept for audit and
+/// cannot be registered a second time.
+/// </para>
 /// </remarks>
 public sealed class Blob : AuditableAggregateRoot<BlobId>
 {
@@ -286,6 +291,49 @@ public sealed class Blob : AuditableAggregateRoot<BlobId>
         RaiseDomainEvent(new BlobReactivated(Id.Value, now));
     }
 
+    /// <summary>Brings a purged digest back at the address its bytes have been written to again.</summary>
+    /// <param name="provider">The storage backend the content was written to.</param>
+    /// <param name="objectKey">The address within that backend.</param>
+    /// <param name="now">The instant of the operation, in UTC.</param>
+    /// <param name="by">The actor performing the operation.</param>
+    /// <remarks>
+    /// <para>
+    /// The identifier is the content, so the same file uploaded after a purge resolves to this row
+    /// rather than to a new one — and the row is kept for audit, so it cannot be registered a
+    /// second time either. Something has to bring it back into service, and it cannot be
+    /// <see cref="Reactivate"/>: <see cref="MarkPurged"/> cleared every location, and a blob with
+    /// no location has no read path whatever its status says.
+    /// </para>
+    /// <para>
+    /// That is why this takes an address rather than nothing. The caller has already written the
+    /// bytes; restoring records where they are, which is the only claim that makes the revived row
+    /// true. The size is not a parameter for the same reason the digest is the identifier — the
+    /// content is identical by definition.
+    /// </para>
+    /// </remarks>
+    public void Restore(
+        StorageProvider provider, ObjectKey objectKey, DateTimeOffset now, Actor by)
+    {
+        ArgumentNullException.ThrowIfNull(provider);
+        ArgumentNullException.ThrowIfNull(objectKey);
+        ArgumentNullException.ThrowIfNull(by);
+
+        CheckRule(new BlobMustBePurgedToRestoreRule(Status));
+
+        var location = new BlobLocation(
+            BlobLocationId.New(), Id, provider, objectKey, LocationState.Primary, now);
+
+        _locations.Add(location);
+
+        Status = BlobStatus.Active;
+        OrphanSince = null;
+        Touch(now, by);
+
+        RaiseDomainEvent(new BlobRestored(
+            Id.Value, SizeBytes, location.Id.Value,
+            provider.Name, objectKey.Bucket, objectKey.Key, by.Value, now));
+    }
+
     /// <summary>Records that the content has been removed from every backend.</summary>
     /// <param name="hasLiveReferences">
     /// Whether a live document version still points at this content, re-checked immediately before
@@ -298,8 +346,10 @@ public sealed class Blob : AuditableAggregateRoot<BlobId>
     /// <param name="now">The instant of the operation, in UTC.</param>
     /// <param name="by">The actor performing the operation.</param>
     /// <remarks>
-    /// Terminal. Records a removal that already happened rather than requesting one — the domain
-    /// has no way to delete a byte, and that is the property the whole storage model rests on.
+    /// Records a removal that already happened rather than requesting one — the domain has no way
+    /// to delete a byte, and that is the property the whole storage model rests on. Terminal for
+    /// every transition but <see cref="Restore"/>, which is what the same content uploaded again
+    /// resolves to.
     /// </remarks>
     public void MarkPurged(
         bool hasLiveReferences, DateTimeOffset retentionCutoff, DateTimeOffset now, Actor by)

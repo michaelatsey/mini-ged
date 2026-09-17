@@ -13,6 +13,15 @@ public sealed class BlobTests
     private static Blob Registered() =>
         Blob.Register(Digest, 1024, StorageProvider.Beys, OnBeys, Fixed.Now, Fixed.Me);
 
+    private static Blob Purged()
+    {
+        var blob = Registered();
+        blob.MarkOrphanCandidate(false, Fixed.Later, Fixed.Me);
+        blob.MarkPurged(false, Fixed.Later.AddDays(31), Fixed.Later.AddDays(31), Fixed.Me);
+
+        return blob;
+    }
+
     [Fact]
     public void Register_creates_a_primary_location()
     {
@@ -165,6 +174,44 @@ public sealed class BlobTests
 
         var act = () => blob.Reactivate(cutoff.AddDays(1), Fixed.Me);
         act.ShouldBreak<BlobMustNotBePurgedRule>();
+    }
+
+    [Fact]
+    public void A_purged_digest_uploaded_again_comes_back_with_a_primary()
+    {
+        var blob = Purged();
+
+        blob.Restore(StorageProvider.Minio, OnMinio, Fixed.Latest, Fixed.Me);
+
+        blob.Status.ShouldBe(BlobStatus.Active);
+        blob.OrphanSince.ShouldBeNull();
+        blob.IsPurged.ShouldBeFalse();
+
+        // The point of the transition: a revived row with no location has no read path, whatever
+        // its status claims.
+        blob.Primary.ShouldNotBeNull().ObjectKey.ShouldBe(OnMinio);
+        blob.ReadOrder.ShouldHaveSingleItem();
+
+        var restored = blob.DomainEvents.OfType<BlobRestored>().ShouldHaveSingleItem();
+        restored.SizeBytes.ShouldBe(1024);
+        restored.Provider.ShouldBe("minio");
+    }
+
+    [Fact]
+    public void Only_a_purged_blob_can_be_restored()
+    {
+        var active = Registered();
+
+        var whileActive = () => active.Restore(
+            StorageProvider.Minio, OnMinio, Fixed.Later, Fixed.Me);
+        whileActive.ShouldBreak<BlobMustBePurgedToRestoreRule>();
+
+        var candidate = Registered();
+        candidate.MarkOrphanCandidate(false, Fixed.Later, Fixed.Me);
+
+        var whileCandidate = () => candidate.Restore(
+            StorageProvider.Minio, OnMinio, Fixed.Latest, Fixed.Me);
+        whileCandidate.ShouldBreak<BlobMustBePurgedToRestoreRule>();
     }
 
     [Fact]
