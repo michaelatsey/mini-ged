@@ -49,7 +49,10 @@ succeeded over the wrong set of projects.
 
 **Every SQL parameter declares its type.** An untyped null breaks PostgreSQL with `42P08` when its
 first occurrence is an `IS NULL`. Use the generic `AddParameter<T>`. Never a `::uuid` cast — it would
-break SQL Server in a slice that runs on both.
+break SQL Server in a slice that runs on both. A type it does not map throws rather than going out
+undeclared, so widening the map is a deliberate edit, not a silent fallback. `DateTime` and
+`TimeSpan` are refused on purpose: neither reads the same way on both engines. An instant is a
+`DateTimeOffset`.
 
 **A value object spanning more than one column is a navigation to EF, not a value**, so it cannot be
 a constructor parameter. `BlobLocation` carries a second private constructor for exactly this.
