@@ -84,6 +84,12 @@ public static class DbReaderExtensions
     /// <param name="command">The command.</param>
     /// <param name="name">The parameter name, without its prefix.</param>
     /// <param name="value">The value. Null becomes <see cref="DBNull"/>.</param>
+    /// <exception cref="NotSupportedException">
+    /// <typeparamref name="T"/> has no declaration that both engines read the same way. Failing
+    /// here is the point: the alternative is a parameter that reaches the provider undeclared,
+    /// which SQL Server accepts and PostgreSQL rejects, so the defect ships and surfaces on one
+    /// engine only.
+    /// </exception>
     /// <remarks>
     /// <para>
     /// The type is always declared, including for a null value — and especially then. A provider
@@ -108,35 +114,55 @@ public static class DbReaderExtensions
         var parameter = command.CreateParameter();
         parameter.ParameterName = name;
         parameter.Value = (object?)value ?? DBNull.Value;
-
-        if (DbTypeOf(typeof(T)) is { } dbType)
-        {
-            parameter.DbType = dbType;
-        }
+        parameter.DbType = DbTypeOf(typeof(T));
 
         command.Parameters.Add(parameter);
     }
 
-    /// <summary>Maps a CLR type to the database type the provider should be told about.</summary>
+    /// <summary>Maps a CLR type to the database type the provider must be told about.</summary>
     /// <param name="type">The CLR type, nullable wrapper already allowed for.</param>
-    /// <returns>The database type, or null when the provider's own inference is adequate.</returns>
-    private static DbType? DbTypeOf(Type type)
+    /// <returns>The database type.</returns>
+    /// <remarks>
+    /// <para>
+    /// The map is deliberately total: there is no "the provider will work it out" case, because
+    /// the position that carries no type information is exactly the position this helper exists
+    /// for. An unmapped type is a mistake to report, not a value to send and hope for.
+    /// </para>
+    /// <para>
+    /// Two omissions are decisions rather than gaps. <see cref="DateTime"/> has no correct
+    /// declaration here: <see cref="DbType.DateTime2"/> reaches PostgreSQL as
+    /// <c>timestamp without time zone</c>, and every instant column in this schema is
+    /// <c>timestamptz</c> — an instant is a <see cref="DateTimeOffset"/>, which is also what
+    /// <see cref="IClock"/> hands out. <see cref="TimeSpan"/> is a duration here — a retention
+    /// window — and the only declaration that fits it on both engines is
+    /// <see cref="DbType.Time"/>, a time of day, which silently truncates anything past
+    /// twenty-four hours. A duration is turned into an instant before it reaches a parameter.
+    /// </para>
+    /// </remarks>
+    private static DbType DbTypeOf(Type type)
     {
         var underlying = Nullable.GetUnderlyingType(type) ?? type;
 
         return Type.GetTypeCode(underlying) switch
         {
             TypeCode.String => DbType.String,
+            TypeCode.Boolean => DbType.Boolean,
+            TypeCode.Int16 => DbType.Int16,
             TypeCode.Int32 => DbType.Int32,
             TypeCode.Int64 => DbType.Int64,
-            TypeCode.Boolean => DbType.Boolean,
-            TypeCode.Decimal => DbType.Decimal,
+            TypeCode.Single => DbType.Single,
             TypeCode.Double => DbType.Double,
-            TypeCode.DateTime => DbType.DateTime2,
+            TypeCode.Decimal => DbType.Decimal,
             _ when underlying == typeof(Guid) => DbType.Guid,
             _ when underlying == typeof(DateTimeOffset) => DbType.DateTimeOffset,
+            _ when underlying == typeof(DateOnly) => DbType.Date,
+            _ when underlying == typeof(TimeOnly) => DbType.Time,
             _ when underlying == typeof(byte[]) => DbType.Binary,
-            _ => null,
+            _ => throw new NotSupportedException(
+                $"No database type is declared for '{underlying}', so the parameter would reach "
+                + "the provider untyped. Pass a type that has a declaration — an instant is a "
+                + "DateTimeOffset, an entity identifier is its underlying Guid — or add the "
+                + "mapping here, once it reads the same way on PostgreSQL and SQL Server."),
         };
     }
 }
