@@ -214,12 +214,12 @@ concurrent ones, and neither covers the other's case.
 ## Status
 
 Builds clean in `Release` with `TreatWarningsAsErrors`. Both schemas apply — PostgreSQL and SQL
-Server — and the stack runs under `docker compose`. 36 domain assertions, 49 upload assertions.
+Server — and the stack runs under `docker compose`. 64 domain tests, green. No upload tests: FileTypes, StagedContent and the detectors are uncovered..
 
 Not yet covered: no malware scanning, no audit trail, no full-text search, and no integration test
 against a live database. See the roadmap below.
 
-The 49 upload assertions and the 36 domain assertions run as a standalone harness rather than through
+64 domain tests, green. No upload tests: FileTypes, StagedContent and the detectors are uncovered.
 `dotnet test`; folding them into `tests/` is part of item 1 below.
 
 ---
