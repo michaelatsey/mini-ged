@@ -16,12 +16,13 @@ task needs it.
 dotnet build -c Release
 
 # After adding or removing ANY ProjectReference, before building an image.
-# It prints the missing COPY lines ready to paste.
+# It prints the missing COPY lines — project files and source directories — ready to paste.
 ./scripts/check-dockerfile-copies.sh hosts/Ged.Api/Dockerfile
 
 docker compose up --build                       # PostgreSQL, the schema runner, the API
 ./scripts/audit.sh                              # before every push; the repository is public
-./scripts/repo-map.sh > REPO-MAP.md             # after finishing a piece of work
+./scripts/repo-map.sh                           # after finishing a piece of work; writes REPO-MAP.md
+./tests/scripts/run.sh                          # after changing anything under scripts/
 
 # `--profile` is a top-level flag: after `up` it is `unknown flag: --profile`. And it only adds the
 # SQL Server container and its migrations — the `api` service keeps `Ged__Provider: postgres`, so
