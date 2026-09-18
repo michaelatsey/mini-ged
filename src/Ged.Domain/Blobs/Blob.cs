@@ -224,9 +224,9 @@ public sealed class Blob : AuditableAggregateRoot<BlobId>
 
         RaiseDomainEvent(new BlobPrimarySwitched(
             Id.Value,
-            previous?.Id.Value ?? Guid.Empty,
+            previous?.Id.Value,
             target.Id.Value,
-            previous?.Provider.Name ?? string.Empty,
+            previous?.Provider.Name,
             target.Provider.Name,
             now));
     }

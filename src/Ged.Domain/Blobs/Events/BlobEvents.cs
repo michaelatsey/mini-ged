@@ -51,20 +51,31 @@ public sealed record BlobLocationVerified(
 /// Raised when reads are switched to a different location.
 /// </summary>
 /// <param name="BlobId">The content digest.</param>
-/// <param name="PreviousLocationId">The location that was serving reads, now legacy.</param>
+/// <param name="PreviousLocationId">
+/// The location that was serving reads, now legacy, or null when none was.
+/// </param>
 /// <param name="NewLocationId">The location now serving reads.</param>
-/// <param name="PreviousProvider">The backend reads came from.</param>
+/// <param name="PreviousProvider">The backend reads came from, or null when none was serving them.</param>
 /// <param name="NewProvider">The backend reads now go to.</param>
 /// <param name="OccurredAt">The instant of the operation, in UTC.</param>
 /// <remarks>
+/// <para>
 /// This is the event a provider migration is built on. Consumers holding cached read URLs must
 /// invalidate them; nothing else changes, because the content itself is identical by definition.
+/// </para>
+/// <para>
+/// "None" is null rather than <see cref="Guid.Empty"/> because a consumer resolves the previous
+/// location, and <see cref="BlobLocationId.From"/> refuses the empty value — a sentinel would fail
+/// on exactly the case it stands for. No transition leaves a blob that is not purged without a
+/// location serving reads, so the null comes only from data: a blob whose serving location was
+/// removed before reads became a pointer, which the backfill of that pointer could not fill.
+/// </para>
 /// </remarks>
 public sealed record BlobPrimarySwitched(
     string BlobId,
-    Guid PreviousLocationId,
+    Guid? PreviousLocationId,
     Guid NewLocationId,
-    string PreviousProvider,
+    string? PreviousProvider,
     string NewProvider,
     DateTimeOffset OccurredAt) : DomainEvent(OccurredAt);
 
