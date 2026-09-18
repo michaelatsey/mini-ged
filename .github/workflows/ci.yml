@@ -23,3 +23,25 @@ jobs:
 
       - name: Test
         run: dotnet test -c Release --no-build --verbosity normal
+
+  scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Script tests
+        run: ./tests/scripts/run.sh
+
+      # Fast, and names the missing COPY line. The image build below is what proves it.
+      - name: Dockerfile COPY lists
+        run: ./scripts/check-dockerfile-copies.sh hosts/Ged.Api/Dockerfile
+
+  # The only complete check of the Dockerfile: the COPY script reads the reference graph, not what
+  # MSBuild actually needs inside the image. Build only, nothing is pushed.
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the API image
+        run: docker build -f hosts/Ged.Api/Dockerfile .

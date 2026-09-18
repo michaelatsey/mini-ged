@@ -1,7 +1,7 @@
 # REPO MAP — mini-ged
 
-Generated 2026-09-17 from commit `34e4f57`.
-Regenerate with `./scripts/repo-map.sh > REPO-MAP.md` — never edit by hand.
+Generated 2026-09-18 from commit `ee6606d` plus uncommitted changes.
+Regenerate with `./scripts/repo-map.sh` — never edit by hand.
 
 ---
 
@@ -134,6 +134,7 @@ src/Ged.Domain
 src/Ged.Features
 tests/Ged.Domain.Tests
 tests/Ged.Features.Tests
+tests/scripts
 ```
 
 ## Domain surface
@@ -229,6 +230,7 @@ PostgreSql/0004_create_document.sql
 PostgreSql/0005_create_document_version.sql
 PostgreSql/0006_create_outbox.sql
 PostgreSql/0007_seed_root_folder.sql
+PostgreSql/0008_move_primary_to_pointer.sql
 SqlServer/0001_create_folder.sql
 SqlServer/0002_create_blob.sql
 SqlServer/0003_create_blob_location.sql
@@ -236,6 +238,7 @@ SqlServer/0004_create_document.sql
 SqlServer/0005_create_document_version.sql
 SqlServer/0006_create_outbox.sql
 SqlServer/0007_seed_root_folder.sql
+SqlServer/0008_move_primary_to_pointer.sql
 ```
 
 ## Documentation
@@ -259,6 +262,7 @@ src/Ged.Adapters.FileTypes/registration.md ```csharp
 ## Recent history
 
 ```
+ee6606d fix(blobs): make the location serving reads a pointer, not a state (#23)
 34e4f57 chore: regenerate REPO-MAP.md (#18)
 f9a8002 docs(claude-md): correct the four statements the code contradicts (#17)
 41f3ee4 fix(sql): declare every parameter's type, or refuse to send it (#15)
@@ -270,5 +274,4 @@ c360c92 chore: add CLAUDE.md for Claude Code sessions (#2)
 6e55ac4 Repository tooling, database documentation, and a Dockerfile fix (#1)
 680fa01 feat: mini-ged — document management platform on .NET 10
 747b270 feat(api): versioned composition root with OpenAPI, security and throttling
-74d0335 feat(features): vertical slices, storage ports and a filesystem backend
 ```
