@@ -20,7 +20,7 @@ namespace Ged.Features.Blobs.Jobs;
 /// AddLocation(target, copyInFlight: true)  -> MIGRATING   copy in flight
 /// copy the bytes
 /// VerifyLocation(id)                       -> REPLICA     digest confirmed
-/// PromoteToPrimary(id)                     -> PRIMARY     reads switch, old becomes LEGACY
+/// PromoteToPrimary(id)                     -> pointer     reads switch, old becomes LEGACY
 /// </code>
 /// <para>
 /// The copy is verified before it can serve reads. Promoting an unverified copy would point every

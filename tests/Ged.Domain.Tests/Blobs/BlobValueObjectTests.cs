@@ -28,9 +28,13 @@ public sealed class BlobValueObjectTests
     public void Lifecycle_codes_round_trip_and_reject_the_unknown()
     {
         BlobStatus.From("active").ShouldBe(BlobStatus.Active);
-        LocationState.From("PRIMARY").ShouldBe(LocationState.Primary);
+        LocationState.From("replica").ShouldBe(LocationState.Replica);
         Should.Throw<DomainException>(() => BlobStatus.From("DELETED"));
         Should.Throw<DomainException>(() => LocationState.From("BACKUP"));
+
+        // PRIMARY is not a state a location can be in any more: which copy serves reads is a
+        // pointer on the blob. A row carrying the old code must fail loudly rather than rehydrate.
+        Should.Throw<DomainException>(() => LocationState.From("PRIMARY"));
     }
 
     [Fact]
@@ -38,7 +42,6 @@ public sealed class BlobValueObjectTests
     {
         LocationState.Migrating.IsReadable.ShouldBeFalse();
         LocationState.Replica.IsReadable.ShouldBeTrue();
-        LocationState.Primary.IsReadable.ShouldBeTrue();
         LocationState.Legacy.IsReadable.ShouldBeTrue();
     }
 }

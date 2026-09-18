@@ -26,6 +26,14 @@ internal sealed class BlobConfiguration(IPersistenceProvider provider)
             .HasConversion(GedValueConverters.BlobStatus);
 
         builder.Property(b => b.OrphanSince).HasColumnName("orphan_since");
+
+        // A mapped scalar, never a navigation: the locations are an owned collection of this same
+        // aggregate, so a navigation would make EF order the two writes around a relationship it
+        // does not need to know about. document.current_version_id is mapped the same way.
+        builder.Property(b => b.PrimaryLocationId)
+            .HasColumnName("primary_location_id")
+            .HasConversion(GedValueConverters.NullableBlobLocationId);
+
         builder.Property(b => b.CreatedAt).HasColumnName("created_at");
         builder.Property(b => b.UpdatedAt).HasColumnName("updated_at");
 
@@ -39,9 +47,9 @@ internal sealed class BlobConfiguration(IPersistenceProvider provider)
             .HasMaxLength(Actor.MaxLength)
             .HasConversion(GedValueConverters.NullableActor);
 
-        // Locations are owned for the reason the aggregate holds them at all: promoting one and
-        // demoting another has to happen in a single SaveChanges, and an owned collection is what
-        // guarantees they are never loaded or saved apart.
+        // Locations are owned for the reason the aggregate holds them at all: an owned collection
+        // cannot be queried independently, so the aggregate boundary becomes a property of the model
+        // rather than a convention, and the locations are never loaded or saved apart from the blob.
         builder.OwnsMany(b => b.Locations, BlobLocationConfiguration.Configure);
 
         builder.Navigation(b => b.Locations)

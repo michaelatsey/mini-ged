@@ -9,6 +9,8 @@ public sealed class BlobTests
     private static readonly BlobId Digest = BlobId.FromSha256(new string('a', 64));
     private static readonly ObjectKey OnBeys = new("legacy", "beys/00112233");
     private static readonly ObjectKey OnMinio = new("ged", "ged/" + new string('a', 64));
+    private static readonly StorageProvider FileSystem = new("filesystem");
+    private static readonly ObjectKey OnFileSystem = new("data", "fs/" + new string('a', 64));
 
     private static Blob Registered() =>
         Blob.Register(Digest, 1024, StorageProvider.Beys, OnBeys, Fixed.Now, Fixed.Me);
@@ -23,14 +25,28 @@ public sealed class BlobTests
     }
 
     [Fact]
-    public void Register_creates_a_primary_location()
+    public void Register_points_at_the_location_it_creates()
     {
         var blob = Registered();
 
-        blob.Locations.ShouldHaveSingleItem();
+        var only = blob.Locations.ShouldHaveSingleItem();
+        blob.PrimaryLocationId.ShouldBe(only.Id);
         blob.Primary.ShouldNotBeNull().Provider.ShouldBe(StorageProvider.Beys);
         blob.Status.ShouldBe(BlobStatus.Active);
         blob.SizeBytes.ShouldBe(1024);
+    }
+
+    [Fact]
+    public void Register_records_the_first_location_verified()
+    {
+        var blob = Registered();
+
+        // The caller has just written these bytes and the blob's own id is their digest, so the
+        // copy is verified by construction. Left unverified it is a readable location nobody has
+        // checked, which is the one thing a content-addressed model exists to prevent.
+        var only = blob.Locations.ShouldHaveSingleItem();
+        only.State.ShouldBe(LocationState.Replica);
+        only.VerifiedAt.ShouldBe(Fixed.Now);
     }
 
     [Fact]
@@ -57,7 +73,7 @@ public sealed class BlobTests
     }
 
     [Fact]
-    public void A_provider_migration_is_four_state_changes_and_no_code_change()
+    public void A_provider_migration_is_data_transitions_and_no_code_change()
     {
         var blob = Registered();
 
@@ -66,6 +82,7 @@ public sealed class BlobTests
         target.State.ShouldBe(LocationState.Replica);
 
         blob.PromoteToPrimary(target.Id, Fixed.Later, Fixed.Me);
+        blob.PrimaryLocationId.ShouldBe(target.Id);
         blob.Primary.ShouldNotBeNull().Provider.ShouldBe(StorageProvider.Minio);
 
         var superseded = blob.Locations.Single(l => l.Provider == StorageProvider.Beys);
@@ -80,14 +97,49 @@ public sealed class BlobTests
     }
 
     [Fact]
-    public void There_is_never_more_than_one_primary()
+    public void Promoting_moves_the_pointer_and_supersedes_the_old_location()
     {
         var blob = Registered();
+        var previous = blob.Primary.ShouldNotBeNull();
         var target = blob.AddLocation(StorageProvider.Minio, OnMinio, false, Fixed.Later, Fixed.Me);
 
         blob.PromoteToPrimary(target.Id, Fixed.Later, Fixed.Me);
 
-        blob.Locations.Count(l => l.State == LocationState.Primary).ShouldBe(1);
+        blob.PrimaryLocationId.ShouldBe(target.Id);
+        target.State.ShouldBe(LocationState.Replica);
+        previous.State.ShouldBe(LocationState.Legacy);
+    }
+
+    [Fact]
+    public void A_rollback_is_the_same_call_in_the_other_direction()
+    {
+        var blob = Registered();
+        var beys = blob.Primary.ShouldNotBeNull();
+        var minio = blob.AddLocation(StorageProvider.Minio, OnMinio, false, Fixed.Later, Fixed.Me);
+
+        blob.PromoteToPrimary(minio.Id, Fixed.Later, Fixed.Me);
+        blob.PromoteToPrimary(beys.Id, Fixed.Latest, Fixed.Me);
+
+        // The sequence the old partial unique index rejected: rolling back promotes the older row,
+        // whose update EF emits first. With the pointer there is no index and no ordering to get
+        // right, so the two directions are the same call.
+        blob.PrimaryLocationId.ShouldBe(beys.Id);
+        beys.State.ShouldBe(LocationState.Replica);
+        minio.State.ShouldBe(LocationState.Legacy);
+        blob.ReadOrder[0].Provider.ShouldBe(StorageProvider.Beys);
+    }
+
+    [Fact]
+    public void The_location_serving_reads_cannot_be_removed()
+    {
+        var blob = Registered();
+        blob.AddLocation(StorageProvider.Minio, OnMinio, false, Fixed.Later, Fixed.Me);
+
+        // A readable copy survives, so the last-location rule is satisfied and the removal used to
+        // go through — leaving an active blob whose reads pointed nowhere.
+        var act = () => blob.RemoveLocation(blob.Primary!.Id, Fixed.Latest, Fixed.Me);
+
+        act.ShouldBreak<LocationMustNotBeServingReadsRule>();
     }
 
     [Fact]
@@ -170,6 +222,7 @@ public sealed class BlobTests
 
         blob.IsPurged.ShouldBeTrue();
         blob.Locations.ShouldBeEmpty();
+        blob.PrimaryLocationId.ShouldBeNull();
         blob.DomainEvents.OfType<BlobPurged>().ShouldHaveSingleItem().SizeBytes.ShouldBe(1024);
 
         var act = () => blob.Reactivate(cutoff.AddDays(1), Fixed.Me);
@@ -189,6 +242,7 @@ public sealed class BlobTests
 
         // The point of the transition: a revived row with no location has no read path, whatever
         // its status claims.
+        blob.PrimaryLocationId.ShouldBe(blob.Locations.ShouldHaveSingleItem().Id);
         blob.Primary.ShouldNotBeNull().ObjectKey.ShouldBe(OnMinio);
         blob.ReadOrder.ShouldHaveSingleItem();
 
@@ -218,11 +272,17 @@ public sealed class BlobTests
     public void ReadOrder_is_primary_then_replica_then_legacy()
     {
         var blob = Registered();
-        var target = blob.AddLocation(StorageProvider.Minio, OnMinio, false, Fixed.Later, Fixed.Me);
+        blob.AddLocation(StorageProvider.Minio, OnMinio, false, Fixed.Later, Fixed.Me);
+        var target = blob.AddLocation(FileSystem, OnFileSystem, false, Fixed.Later, Fixed.Me);
+
         blob.PromoteToPrimary(target.Id, Fixed.Later, Fixed.Me);
 
-        blob.ReadOrder[0].Provider.ShouldBe(StorageProvider.Minio);
-        blob.ReadOrder[^1].Provider.ShouldBe(StorageProvider.Beys);
+        // Three locations, and the one serving reads was added last. Both it and minio are REPLICA,
+        // so ranking by state alone would put minio first — only the pointer separates them. With
+        // two locations this assertion holds either way, which is why there are three.
+        blob.ReadOrder[0].Provider.ShouldBe(FileSystem);
+        blob.ReadOrder[1].Provider.ShouldBe(StorageProvider.Minio);
+        blob.ReadOrder[2].Provider.ShouldBe(StorageProvider.Beys);
     }
 
     [Fact]

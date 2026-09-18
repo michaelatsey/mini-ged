@@ -60,9 +60,10 @@ a constructor parameter. `BlobLocation` carries a second private constructor for
 **Content reaches storage before the transaction opens.** Never move the write inside it: a failed
 commit must leave a detectable orphan, not an object nothing refers to.
 
-**`PromoteToPrimary` demotes one location and promotes another in one `SaveChanges`,** against
-`ux_blob_location_single_primary`. Untested against a real engine. If it fails, the fallback is
-`DEFERRABLE INITIALLY DEFERRED` on the PostgreSQL index.
+**Which location serves reads is `blob.primary_location_id`, never a state on `blob_location`.**
+It was a `PRIMARY` state under a partial unique index until `0008`, and that form required the
+demotion and the promotion to reach the engine in a fixed order — which a rollback reverses. Do not
+reintroduce a state, and do not add an index to enforce a cardinality a column already holds.
 
 ---
 

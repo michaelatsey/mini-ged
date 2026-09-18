@@ -16,7 +16,7 @@ namespace Ged.Domain.Blobs;
 /// </para>
 /// <para>
 /// Locations belong to this aggregate because switching which one serves reads must be atomic: a
-/// blob with two primaries, or none, has no defined read path. Everything else about a location —
+/// blob with no defined read path is unreadable content. Everything else about a location —
 /// creating the object, copying it, deleting it — happens in infrastructure. This aggregate only
 /// records what is true.
 /// </para>
@@ -58,8 +58,18 @@ public sealed class Blob : AuditableAggregateRoot<BlobId>
     /// <summary>Gets a value indicating whether the content has been removed from every backend.</summary>
     public bool IsPurged => Status == BlobStatus.Purged;
 
+    /// <summary>Gets the id of the location reads are served from, or null once the blob is purged.</summary>
+    /// <remarks>
+    /// A pointer rather than a state on the location, because "exactly one" is a cardinality and a
+    /// cardinality belongs in the type of a column. Spread over rows it needs an index to forbid the
+    /// second one, an ordering of the two writes to satisfy that index, and every future call site to
+    /// remember the ordering. A column holding one value needs none of the three.
+    /// </remarks>
+    public BlobLocationId? PrimaryLocationId { get; private set; }
+
     /// <summary>Gets the location reads are served from, or null once the blob is purged.</summary>
-    public BlobLocation? Primary => _locations.Find(l => l.State == LocationState.Primary);
+    public BlobLocation? Primary =>
+        PrimaryLocationId is { } id ? _locations.Find(l => l.Id == id) : null;
 
     /// <summary>
     /// Gets the readable locations, best first: the primary, then verified replicas, then legacy
@@ -69,7 +79,7 @@ public sealed class Blob : AuditableAggregateRoot<BlobId>
     public IReadOnlyList<BlobLocation> ReadOrder =>
         [.. _locations
             .Where(l => l.IsReadable)
-            .OrderBy(l => l.State == LocationState.Primary ? 0
+            .OrderBy(l => l.Id == PrimaryLocationId ? 0
                         : l.State == LocationState.Replica ? 1
                         : 2)];
 
@@ -83,7 +93,9 @@ public sealed class Blob : AuditableAggregateRoot<BlobId>
     /// <returns>The newly registered blob.</returns>
     /// <remarks>
     /// A location is mandatory: content with no place to read it from is not content. The initial
-    /// location starts as the primary because it is, by construction, the only one.
+    /// location is the one reads go to because it is, by construction, the only one. It is recorded
+    /// verified: the caller has just written these bytes, and the blob's own identifier is their
+    /// digest — the same claim <see cref="AddLocation"/> makes for a copy written synchronously.
     /// </remarks>
     public static Blob Register(
         BlobId id,
@@ -101,9 +113,12 @@ public sealed class Blob : AuditableAggregateRoot<BlobId>
         var blob = new Blob(id, sizeBytes, now, by);
 
         var location = new BlobLocation(
-            BlobLocationId.New(), id, provider, objectKey, LocationState.Primary, now);
+            BlobLocationId.New(), id, provider, objectKey, LocationState.Replica, now);
+
+        location.Verify(now);
 
         blob._locations.Add(location);
+        blob.PrimaryLocationId = location.Id;
 
         blob.RaiseDomainEvent(new BlobRegistered(
             id.Value, sizeBytes, location.Id.Value,
@@ -166,7 +181,7 @@ public sealed class Blob : AuditableAggregateRoot<BlobId>
         var location = _locations.Find(l => l.Id == locationId);
         CheckRule(new LocationMustBelongToBlobRule(Id, location is not null, locationId));
 
-        if (location!.State == LocationState.Primary)
+        if (location!.Id == PrimaryLocationId)
             return;
 
         location.Verify(now);
@@ -181,9 +196,11 @@ public sealed class Blob : AuditableAggregateRoot<BlobId>
     /// <param name="now">The instant of the operation, in UTC.</param>
     /// <param name="by">The actor performing the operation.</param>
     /// <remarks>
-    /// The demotion and the promotion happen together, so the blob is never left without a primary
-    /// or with two. This is the single step that completes a provider migration, and a rollback is
-    /// the same call in the other direction.
+    /// Moving the pointer is the switch; the two locations only record that one is now current and
+    /// the other superseded. Because the pointer is a single column, the blob cannot be left without
+    /// a location serving reads or with two, whatever order the writes reach the database in. This is
+    /// the single step that completes a provider migration, and a rollback is the same call in the
+    /// other direction.
     /// </remarks>
     public void PromoteToPrimary(BlobLocationId locationId, DateTimeOffset now, Actor by)
     {
@@ -195,13 +212,14 @@ public sealed class Blob : AuditableAggregateRoot<BlobId>
         CheckRule(new LocationMustBelongToBlobRule(Id, target is not null, locationId));
         CheckRule(new LocationMustBeVerifiedBeforePromotionRule(target!.State));
 
-        if (target.State == LocationState.Primary)
+        if (target.Id == PrimaryLocationId)
             return;
 
         var previous = Primary;
 
         previous?.ChangeState(LocationState.Legacy);
-        target.ChangeState(LocationState.Primary);
+        target.ChangeState(LocationState.Replica);
+        PrimaryLocationId = target.Id;
         Touch(now, by);
 
         RaiseDomainEvent(new BlobPrimarySwitched(
@@ -220,6 +238,8 @@ public sealed class Blob : AuditableAggregateRoot<BlobId>
     /// <remarks>
     /// Removing the record is not deleting the object. The event carries the address so a consumer
     /// can perform the physical delete — and so an operator can find the object if it does not.
+    /// Only a superseded location can go: promote another one first, which is the order a provider
+    /// migration already follows.
     /// </remarks>
     public void RemoveLocation(BlobLocationId locationId, DateTimeOffset now, Actor by)
     {
@@ -232,6 +252,7 @@ public sealed class Blob : AuditableAggregateRoot<BlobId>
 
         var readableLeft = _locations.Count(l => l.IsReadable && l.Id != locationId);
         CheckRule(new BlobMustKeepAReadableLocationRule(readableLeft == 0));
+        CheckRule(new LocationMustNotBeServingReadsRule(PrimaryLocationId, locationId));
 
         _locations.Remove(location!);
         Touch(now, by);
@@ -321,9 +342,12 @@ public sealed class Blob : AuditableAggregateRoot<BlobId>
         CheckRule(new BlobMustBePurgedToRestoreRule(Status));
 
         var location = new BlobLocation(
-            BlobLocationId.New(), Id, provider, objectKey, LocationState.Primary, now);
+            BlobLocationId.New(), Id, provider, objectKey, LocationState.Replica, now);
+
+        location.Verify(now);
 
         _locations.Add(location);
+        PrimaryLocationId = location.Id;
 
         Status = BlobStatus.Active;
         OrphanSince = null;
@@ -364,6 +388,7 @@ public sealed class Blob : AuditableAggregateRoot<BlobId>
 
         Status = BlobStatus.Purged;
         _locations.Clear();
+        PrimaryLocationId = null;
         Touch(now, by);
 
         RaiseDomainEvent(new BlobPurged(Id.Value, SizeBytes, orphanSince, by.Value, now));

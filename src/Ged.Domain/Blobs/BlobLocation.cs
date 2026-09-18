@@ -1,14 +1,17 @@
 namespace Ged.Domain.Blobs;
 
 /// <summary>
-/// One place where a blob's bytes physically live, and the role that place currently plays.
+/// One place where a blob's bytes physically live, and how complete that copy is.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Part of the <see cref="Blob"/> aggregate rather than an aggregate of its own. Promoting one
-/// location and demoting another must happen in a single transaction — a blob with two primaries,
-/// or none, has no defined read path — and that requirement is exactly what an aggregate boundary
-/// is for.
+/// Part of the <see cref="Blob"/> aggregate rather than an aggregate of its own: a copy is only
+/// meaningful as one of the places a particular blob can be read from, and a blob with no defined
+/// read path is unreadable content. That is exactly what an aggregate boundary is for.
+/// </para>
+/// <para>
+/// A location does not record whether reads go to it. That is <see cref="Blob.PrimaryLocationId"/>
+/// — one value on the blob, not a role several rows could claim at once.
 /// </para>
 /// <para>
 /// The address is fixed at creation; only the state moves. The constructor is

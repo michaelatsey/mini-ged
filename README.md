@@ -108,7 +108,7 @@ blob.MarkPurged(hasLiveReferences, retentionCutoff, now, actor);
 | Re-uploading identical content as a "change" | `VersionContentMustDifferFromCurrentRule` |
 | A cycle in the folder tree | `FolderMustNotMoveIntoItsOwnSubtreeRule` |
 | Promoting an unverified copy to serve reads | `LocationMustBeVerifiedBeforePromotionRule` |
-| A blob with two primaries, or none | one transaction, plus a unique partial index |
+| A blob with no location serving reads | `blob.primary_location_id`, a column holding one value |
 | Purging content still referenced | re-checked immediately before the purge |
 | Purging before the retention window elapses | `BlobMustBeAnAgedOrphanToPurgeRule` |
 | Passing a `FolderId` where a `DocumentId` belongs | distinct types |
@@ -122,7 +122,7 @@ state transitions on data, with no code change and a two-step rollback.
 ```
 blob.AddLocation(minio, key, copyInFlight: true)   → MIGRATING   copy in flight
 blob.VerifyLocation(id)                            → REPLICA     digest confirmed
-blob.PromoteToPrimary(id)                          → PRIMARY     reads switch, old → LEGACY
+blob.PromoteToPrimary(id)                          → pointer     reads switch, old → LEGACY
 blob.RemoveLocation(oldId)                                       record dropped
 ```
 
@@ -198,9 +198,10 @@ contains a `try`. Reasoning in `docs/api.md`.
 | Engine-specific dialect | `IPersistenceProvider`, and nothing else |
 | Recognising a file format | `IContentFormatDetector`, and nothing else |
 
-Some guarantees exist in both places on purpose. `ux_blob_location_single_primary` repeats an
-invariant the aggregate already enforces: the aggregate covers one transaction, the index covers two
-concurrent ones, and neither covers the other's case.
+Some guarantees exist in both places on purpose — but a cardinality is not one of them. "One
+location serves reads" is `blob.primary_location_id`, a column holding one value, not a state an
+index has to forbid a second of. `document.current_version_id` answers the same question the same
+way.
 
 ## Reading order
 
@@ -234,13 +235,13 @@ files from users.
 
 ### 1. Integration tests against a live database ◆
 
-The model has never been round-tripped through EF Core against a real engine. One mapping bet remains
-open: `PromoteToPrimary` demotes one location and promotes another in a single `SaveChanges`, against
-a unique partial index. It surfaces on write, never at build.
+The model has never been round-tripped through EF Core against a real engine. The mapping bets that
+remain are the owned collections and the nested owned `ObjectKey` — `docs/microkit-deviations.md`
+lists them. They surface on write, never at build.
 
 ```
 Testcontainers, [Theory] over both engines
-  - full Blob lifecycle round-trip
+  - full Blob lifecycle round-trip, including a promotion rolled back
   - optimistic concurrency: uint vs byte[] both reject a stale write
   - the outbox row lands in the same transaction as the aggregate
   - DbUp applies, then every DbSet is queried once — the mapping guard
