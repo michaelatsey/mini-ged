@@ -92,6 +92,7 @@ public sealed class BlobTests
         blob.Locations.ShouldHaveSingleItem();
 
         var switched = blob.DomainEvents.OfType<BlobPrimarySwitched>().ShouldHaveSingleItem();
+        switched.PreviousLocationId.ShouldBe(superseded.Id.Value);
         switched.PreviousProvider.ShouldBe("beys");
         switched.NewProvider.ShouldBe("minio");
     }
@@ -127,6 +128,27 @@ public sealed class BlobTests
         beys.State.ShouldBe(LocationState.Replica);
         minio.State.ShouldBe(LocationState.Legacy);
         blob.ReadOrder[0].Provider.ShouldBe(StorageProvider.Beys);
+    }
+
+    [Fact]
+    public void Promoting_where_no_location_served_reads_reports_no_previous_location()
+    {
+        var blob = Registered();
+        var target = blob.AddLocation(StorageProvider.Minio, OnMinio, false, Fixed.Later, Fixed.Me);
+
+        // What 0008 backfilled for a blob whose serving location had been removed before reads
+        // became a pointer: active, no pointer. No method produces it, so the pointer is cleared
+        // the way EF materializes a NULL column — through its private setter.
+        typeof(Blob).GetProperty(nameof(Blob.PrimaryLocationId))!.SetValue(blob, null);
+
+        blob.PromoteToPrimary(target.Id, Fixed.Later, Fixed.Me);
+
+        // Guid.Empty used to stand for "none" here, and BlobLocationId.From refuses it: a consumer
+        // resolving the previous location to invalidate its cache failed on exactly this case.
+        var switched = blob.DomainEvents.OfType<BlobPrimarySwitched>().ShouldHaveSingleItem();
+        switched.PreviousLocationId.ShouldBeNull();
+        switched.PreviousProvider.ShouldBeNull();
+        switched.NewLocationId.ShouldBe(target.Id.Value);
     }
 
     [Fact]
