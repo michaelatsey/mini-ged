@@ -41,6 +41,10 @@ internal static class GedValueConverters
     public static readonly ValueConverter<BlobLocationId, Guid> BlobLocationId =
         new(id => id.Value, value => Domain.Blobs.BlobLocationId.From(value));
 
+    public static readonly ValueConverter<BlobLocationId?, Guid?> NullableBlobLocationId =
+        new(id => id!.Value.Value,
+            value => value == null ? null : Domain.Blobs.BlobLocationId.From(value.Value));
+
     public static readonly ValueConverter<Actor, string> Actor =
         new(actor => actor.Value, value => new Actor(value));
 

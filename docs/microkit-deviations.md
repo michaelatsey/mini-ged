@@ -35,8 +35,16 @@ this targets" is whatever the last vendoring pass brought in — check `git log 
 Dapper and DbUp all come from nuget.org, which was unreachable when they were authored.
 `Ged.Domain`, `Ged.Core` and the domain test suite are compiler-verified; these two are not.
 
-Four mapping decisions are bets until the first `dotnet build` and round-trip test. They are listed
-here so the first person to run them knows where to look rather than reading 900 lines.
+Three mapping decisions are bets until the first round-trip test. They are listed here so the first
+person to run them knows where to look rather than reading 900 lines.
+
+There was a fourth. `PromoteToPrimary` demoted one location and promoted another against the partial
+unique index `ux_blob_location_single_primary`, and the note here offered `DEFERRABLE INITIALLY
+DEFERRED` on that index as the fix. It was not a bet that could be won: the ordering it depended on
+reverses between a migration and its rollback, and the escape was not valid SQL — PostgreSQL defers
+constraints, not indexes, and a `UNIQUE` constraint cannot carry the filter this one needed. Issue #8
+settled it by moving the value into `blob.primary_location_id` and dropping the index on both
+engines. There is nothing left to order.
 
 ## Bet 1 — constructor binding
 
@@ -69,22 +77,14 @@ rejects the read-only projection, since `AsReadOnly()` allocates a new wrapper o
 an owned type nested inside the owned `BlobLocation` collection. Nesting owned types is supported;
 this particular combination is the least-travelled path in the whole mapping.
 
-## Bet 4 — two state mutations in one `SaveChanges`
-
-`PromoteToPrimary` demotes one location and promotes another. Both must land in the same
-transaction, or the unique index `ux_blob_location_single_primary` rejects the write.
-
-If EF orders the two updates badly, the fix is `DEFERRABLE INITIALLY DEFERRED` on the index — the
-same technique already used for `fk_document_current_version`, where the document and its first
-version are inserted together and neither can be written first.
-
-## The test that settles all four
+## The test that settles all three
 
 ```
 1. Blob.Register(beys) → AddLocation(minio) → VerifyLocation → PromoteToPrimary
 2. SaveChanges
 3. new DbContext, FindAsync
-4. exactly one PRIMARY, ReadOrder correct, digest and size intact
+4. primary_location_id names the minio row, ReadOrder correct, digest and size intact
+5. PromoteToPrimary back to beys — the direction the dropped index rejected
 ```
 
 Add it to a persistence test project with Testcontainers before writing any application slice.

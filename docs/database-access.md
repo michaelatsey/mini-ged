@@ -60,7 +60,7 @@ SELECT scriptname, applied FROM schemaversions ORDER BY schemaversionsid;
 SELECT ScriptName, Applied FROM SchemaVersions ORDER BY Id;
 ```
 
-Seven rows, `0001` through `0007`. This is the table DbUp reads to decide what is left to apply, so
+Eight rows, `0001` through `0008`. This is the table DbUp reads to decide what is left to apply, so
 a missing row means a script never ran — not that it failed.
 
 Grepping the repository for `schemaversions` finds nothing, and that is correct: DbUp creates the
@@ -85,25 +85,29 @@ SELECT id, name, folder_type FROM folder;
 
 One row, `00000000-0000-7000-8000-000000000001`. This is the `folderId` every first call uses.
 
-### The index that carries a domain invariant
+### The column that carries a domain invariant
 
-The most interesting check, because it verifies that "one primary location per blob" exists **in the
-database** and not only in the aggregate.
+The most interesting check, because "one location serves reads" is a cardinality and this is where
+it is kept — in a column that holds one value, not in a state several rows could claim at once.
 
 ```sql
 -- PostgreSQL
-SELECT indexdef FROM pg_indexes WHERE tablename = 'blob_location';
---   expected: ... WHERE (state = 'PRIMARY'::text)
+SELECT column_name, data_type, is_nullable
+FROM   information_schema.columns
+WHERE  table_name = 'blob' AND column_name = 'primary_location_id';
+--   expected: uuid, YES
+
+SELECT indexname FROM pg_indexes WHERE tablename = 'blob_location';
+--   expected: NO ux_blob_location_single_primary — 0008 dropped it
 
 -- SQL Server
-SELECT name, is_unique, has_filter, filter_definition
-FROM   sys.indexes
-WHERE  object_id = OBJECT_ID('blob_location');
---   expected: has_filter = 1, filter_definition = ([state]='PRIMARY')
+SELECT name, is_nullable FROM sys.columns
+WHERE  object_id = OBJECT_ID('blob') AND name = 'primary_location_id';
 ```
 
-The aggregate covers one transaction; this index covers two concurrent ones. Neither covers the
-other's case, which is why the guarantee is deliberately written twice.
+It used to be a partial unique index over `blob_location.state = 'PRIMARY'`. That form needed the
+two writes that move it — one demotion, one promotion — to reach the engine in the right order, and
+a rollback sends them in the other one. Nullable because a purged blob has no locations left.
 
 ### The computed column — SQL Server only
 
@@ -123,11 +127,13 @@ have failed.
 ```sql
 SELECT conname, condeferrable, condeferred
 FROM   pg_constraint
-WHERE  conname = 'fk_document_current_version';
+WHERE  conname IN ('fk_document_current_version', 'fk_blob_primary_location');
 ```
 
-`condeferrable = t`. This is what allows a document and its first version to be inserted in one
-transaction, when neither can legally be written before the other.
+`condeferrable = t` on both. This is what allows a document and its first version — or a blob and its
+first location — to be inserted in one transaction, when neither side can legally be written before
+the other. SQL Server has no deferrable constraints, so neither foreign key exists there; the
+aggregates enforce both, and `0005` and `0008` each say so where the constraint would have gone.
 
 ---
 
@@ -138,14 +144,17 @@ SELECT d.name, v.version_no, b.id AS digest, b.status, l.provider, l.state
 FROM   document d
 JOIN   document_version v ON v.id = d.current_version_id
 JOIN   blob b             ON b.id = v.blob_id
-JOIN   blob_location l    ON l.blob_id = b.id;
+JOIN   blob_location l    ON l.id = b.primary_location_id;
 ```
+
+Both joins follow a pointer: `current_version_id` to reach the version, `primary_location_id` to
+reach the copy reads are served from.
 
 ```
 version_no  1
 status      ACTIVE
 provider    filesystem
-state       PRIMARY
+state       REPLICA
 ```
 
 Upload the same bytes into another folder and the query returns **two documents sharing one blob**.

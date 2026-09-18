@@ -92,6 +92,28 @@ public sealed class BlobMustKeepAReadableLocationRule(bool wouldLeaveNoReadableL
     protected override object?[] GetEqualityComponents() => [wouldLeaveNoReadableLocation];
 }
 
+/// <summary>Prevents removing the location a blob's reads are served from.</summary>
+/// <param name="primaryLocationId">The location currently serving reads, or null on a purged blob.</param>
+/// <param name="candidate">The location being removed.</param>
+/// <remarks>
+/// A removal that silently drops the read path leaves an active blob with readable copies and
+/// nothing pointing at them — recoverable, but only once someone notices. Promoting another
+/// location first is one extra call and is already the order a provider migration follows.
+/// </remarks>
+public sealed class LocationMustNotBeServingReadsRule(
+    BlobLocationId? primaryLocationId, BlobLocationId candidate) : BusinessRule
+{
+    /// <inheritdoc />
+    public override bool IsBroken() => primaryLocationId == candidate;
+
+    /// <inheritdoc />
+    public override string Message =>
+        "The location serving reads cannot be removed; promote another one first.";
+
+    /// <inheritdoc />
+    protected override object?[] GetEqualityComponents() => [primaryLocationId, candidate];
+}
+
 /// <summary>Prevents marking a blob orphaned while something still references it.</summary>
 /// <param name="hasLiveReferences">Whether at least one live document version still points at it.</param>
 /// <remarks>
@@ -140,9 +162,9 @@ public sealed class BlobMustBeAnAgedOrphanToPurgeRule(
 /// <param name="status">The blob's current status.</param>
 /// <remarks>
 /// Restoring registers a location for bytes that have just been written again. On a blob that
-/// still holds one it would produce a second primary, and on an orphan candidate it would paper
-/// over the reactivation the caller actually meant — so the transition is confined to the one
-/// state in which the blob has no location left at all.
+/// still holds one it would move the read path to a copy nobody asked for, and on an orphan
+/// candidate it would paper over the reactivation the caller actually meant — so the transition is
+/// confined to the one state in which the blob has no location left at all.
 /// </remarks>
 public sealed class BlobMustBePurgedToRestoreRule(BlobStatus status) : BusinessRule
 {

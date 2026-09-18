@@ -1,6 +1,6 @@
 # REPO MAP — mini-ged
 
-Generated 2026-09-17 from commit `f9a8002`.
+Generated 2026-09-17 from commit `34e4f57`.
 Regenerate with `./scripts/repo-map.sh > REPO-MAP.md` — never edit by hand.
 
 ---
@@ -24,13 +24,13 @@ Ged.Adapters.FileTypes.FileSignatures          2 files      77 lines
 Ged.Adapters.FileTypes                         2 files     231 lines
 Ged.Adapters.Persistence.PostgreSql            3 files     152 lines
 Ged.Adapters.Persistence.SqlServer             3 files     161 lines
-Ged.Adapters.Persistence                      21 files    1131 lines
+Ged.Adapters.Persistence                      21 files    1143 lines
 Ged.Adapters.Storage.FileSystem                2 files     204 lines
 Ged.Adapters.Storage                           2 files      99 lines
 Ged.Core                                       9 files     275 lines
-Ged.Domain                                    51 files    2512 lines
+Ged.Domain                                    51 files    2563 lines
 Ged.Features                                  48 files    3402 lines
-Ged.Domain.Tests                              10 files     765 lines
+Ged.Domain.Tests                              10 files     828 lines
 Ged.Features.Tests                            17 files    1375 lines
 ```
 
@@ -259,6 +259,7 @@ src/Ged.Adapters.FileTypes/registration.md ```csharp
 ## Recent history
 
 ```
+34e4f57 chore: regenerate REPO-MAP.md (#18)
 f9a8002 docs(claude-md): correct the four statements the code contradicts (#17)
 41f3ee4 fix(sql): declare every parameter's type, or refuse to send it (#15)
 ad61d58 fix(uploads): bound a request by the configured ceiling, and size the container for it (#14)
@@ -270,5 +271,4 @@ c360c92 chore: add CLAUDE.md for Claude Code sessions (#2)
 680fa01 feat: mini-ged — document management platform on .NET 10
 747b270 feat(api): versioned composition root with OpenAPI, security and throttling
 74d0335 feat(features): vertical slices, storage ports and a filesystem backend
-3566a4b refactor(persistence): multi-provider PostgreSQL and SQL Server, drop obsolete xmin API
 ```
