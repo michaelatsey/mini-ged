@@ -34,6 +34,30 @@ leak 'value starting with x or 7'         client.py        "api_key = \"x7$v\""
 leak 'Markdown is swept too'              docs/setup.md    "password = \"$v\""
 leak 'private key'                        deploy/id_rsa    "$(printf -- '-----BEGIN %s PRIVATE KEY-----' RSA)"
 
+# A placeholder word elsewhere on the line must not clear the credential beside it.
+leak 'XML attribute'                      web.config       "<add name=\"Db\" connectionString=\"Server=x;Password=$v\" />"
+leak 'hostname containing your-'          appsettings.json "{ \"Db\": \"Host=your-db.postgres.database.azure.com;Password=$v\" }"
+leak 'hostname containing example'        appsettings.json "{ \"Db\": \"Host=db.example.com;Password=$v\" }"
+leak 'hostname word, spaced separator'    appsettings.json "{ \"ConnectionString\": \"Host=your-db;Password = $v\" }"
+leak 'compose variable, list form'        compose.yaml     "      - POSTGRES_PASSWORD=$v"
+leak 'compose variable, map form'         compose.yaml     "      MSSQL_SA_PASSWORD: $v"
+leak 'YAML value, unquoted'               config.yml       "password: $v"
+leak 'YAML value holding a dollar'        config.yml       "password: $v\$\$1"
+
+# git grep reports a binary file on a line of its own unless told to read it as text.
+repo=$(fixture)
+printf 'x\0password = "%s"\n' "$v" > "$repo/data.bin"
+commit_all "$repo"
+out=$(audit "$repo")
+expect_exit 'binary file' 1 $? "$out"
+
+repo=$(fixture)
+put "$repo" src/Client.cs 'var session = Connect(password: dto.Password, secret: options.Secret);'
+put "$repo" compose.yaml '      ConnectionStrings__Ged: Host=db;Password=${DB_PASSWORD:-ged}'
+commit_all "$repo"
+out=$(audit "$repo")
+expect_exit 'C# named arguments and an interpolated YAML connection string do not fail the sweep' 0 $? "$out"
+
 repo=$(fixture)
 put "$repo" src/Handler.cs 'Task Handle(CancellationToken cancellationToken = default) { var password = request.Password; }'
 put "$repo" appsettings.json '{ "Password": "changeme", "Db": "Host=db;Password=ged" }'

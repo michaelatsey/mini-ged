@@ -20,28 +20,67 @@ section "1. Secrets — the repository is public, so history counts, not just HE
 # Assignments carrying a literal value, not every line that says "token". A scan that reports twenty
 # harmless lines is a scan nobody reads twice, and the one real hit is then lost in the noise.
 #
-# Two shapes. A quoted value, after a key that may be quoted itself: password = 'x', "Password": "x".
+# Three shapes. A quoted value, after a key that may be quoted itself: password = 'x', "Password": "x".
 # Or no quotes at all, the way a connection string carries it: Password=x; — the key must then meet
-# its `=` with no space, which is what keeps `password = request.Password` out.
+# its `=` with no space, which is what keeps `password = request.Password` out. Or YAML, which needs
+# no quotes either: password: x. That one is swept in *.yml and *.yaml only, because the same shape
+# in C# is a named argument — password: dto.Password. And only after a key naming the credential
+# itself: a connection string carries its credential as Password=x, which the unquoted shape finds in
+# any file, while the literal rest of Host=db;Password=${X} would read as a secret it does not hold.
 #
 # The single quote is a variable because ERE has no escape for it. Inside a bracket expression \x27
 # is the four characters \ x 2 7: it left ' out of the quotes and x, 2 and 7 out of the values.
 q="'"
-KEY='(password|pwd|passwd|api[_-]?key|secret|access[_-]?token|connection[_-]?string)[a-z_]*'
-LEAK="$KEY[\"$q]?[[:space:]]*[=:][[:space:]]*[\"$q][^\"$q{\$<]{4,}|$KEY=[^\"$q;[:space:]{\$<]{4,}"
-KNOWN='POSTGRES_PASSWORD|MSSQL_SA_PASSWORD|Password=ged|Ged!Passw0rd|your-|example|changeme|placeholder|<'
+CREDENTIAL='password|pwd|passwd|api[_-]?key|secret|access[_-]?token'
+KEY="($CREDENTIAL|connection[_-]?string)[a-z_]*"
+QUOTED="$KEY[\"$q]?[[:space:]]*[=:][[:space:]]*[\"$q][^\"$q{\$<]{4,}"
+UNQUOTED="$KEY=[^\"$q;[:space:]{\$<]{4,}"
+YAML="($CREDENTIAL)[a-z_]*[\"$q]?:[[:space:]]+[^\"$q[:space:]{\$<#][^\"$q[:space:]{\$<]{3,}"
+SEPARATOR="^$KEY[\"$q]?[[:space:]]*[=:][[:space:]]*[\"$q]?"
+
+# Placeholders, matched against the value alone. Matched against the line, as they once were, `<`
+# dropped every XML line and `your-` every hostname that contains it — with the password beside them.
+# A placeholder word counts only where the value, or a credential inside it, begins: in
+# Host=your-db;Password = x, `your-` names the host and says nothing about the password.
+PLACEHOLDER='your-|example|changeme|placeholder'
+KNOWN="(^|$KEY[[:space:]]*=[[:space:]]*)($PLACEHOLDER)|Password=ged|Ged!Passw0rd"
+
+# sweep <pattern> <pathspec>... — prints path:line:assignment for each assignment whose value is not
+# a known placeholder. Each shape is swept on its own: in one alternation, the quoted value of a
+# connection-string key would swallow the Password= inside it before the unquoted shape saw it.
+# -z separates path, line and match with NUL, so a colon in a path cannot shift the value. -a reads
+# a binary file as text: otherwise git grep reports it on a line of its own, outside those records.
+# A match the separator does not fit is reported rather than judged: under set -u, reading the empty
+# BASH_REMATCH would end the loop with status 1, which reads as "nothing found".
+sweep() {
+  local pattern=$1 path line match
+  shift
+  git grep -a -z -o -iEn -e "$pattern" -- "$@" | {
+    shopt -s nocasematch
+    while IFS= read -r -d '' path && IFS= read -r -d '' line && IFS= read -r match; do
+      [[ $match =~ $SEPARATOR && ${match:${#BASH_REMATCH}} =~ $KNOWN ]] ||
+        printf '%s:%s:%s\n' "$path" "$line" "$match"
+    done
+  }
+}
 
 # Markdown is swept too: a README showing a real connection string publishes it as surely as
 # appsettings.json does. git grep exits 1 when nothing matches and above 1 when it could not search,
 # and the second must not read as the first — that is how a broken pattern would print "clean".
-raw=$(git grep -iEn -e "$LEAK" -- ':!*.example'); rc=$?
+hits='' rc=0
+collect() {
+  local out r
+  out=$(sweep "$@"); r=$?
+  if [ "$r" -gt 1 ]; then rc=$r; fi
+  hits+=${out:+$out$'\n'}
+}
+collect "$QUOTED" ':!*.example'
+collect "$UNQUOTED" ':!*.example'
+collect "$YAML" '*.yml' '*.yaml'
 if [ "$rc" -gt 1 ]; then
   printf 'ERROR — the credential sweep did not run (git grep exit %s)\n' "$rc"; status=1
-else
-  hits=$(grep -viE "$KNOWN" <<< "$raw" || true)
-  if [ -n "$hits" ]; then printf 'REVIEW — literal credentials in tracked files:\n%s\n' "$hits"; status=1
-  else printf 'HEAD   clean\n'; fi
-fi
+elif [ -n "$hits" ]; then printf 'REVIEW — literal credentials in tracked files:\n%s' "$hits"; status=1
+else printf 'HEAD   clean\n'; fi
 
 # History is deliberately NOT scanned here. `git log -G` over every commit is slow enough to make
 # this script something nobody runs, and a dedicated tool does it better:
