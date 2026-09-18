@@ -36,6 +36,7 @@
     <Project Path="src/Ged.Features/Ged.Features.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Ged.Api.Tests/Ged.Api.Tests.csproj" />
     <Project Path="tests/Ged.Domain.Tests/Ged.Domain.Tests.csproj" Id="eda3efa4-6658-4383-9826-ce4fb9421747" />
     <Project Path="tests/Ged.Features.Tests/Ged.Features.Tests.csproj" />
   </Folder>
