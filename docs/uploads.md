@@ -40,7 +40,7 @@ format
                         "txt", "csv", "jpeg", "png", "tiff", "bmp" ],
     "ReclassifiableGroups": [ "images" ],
     "MaxSizeBytes": 268435456,
-    "MaxSizeByFormat": { "csv": 10485760, "png": 26214400 },
+    "MaxSizeByFormat": { "csv": 10485760, "png": 26214400, "tiff": 52428800 },
     "FormatsByDocType": { "CONTRACT": [ "pdf" ], "INVOICE": [ "pdf", "xlsx" ] },
     "EnforceDeclaredMediaType": false
   }

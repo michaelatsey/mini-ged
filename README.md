@@ -215,13 +215,13 @@ way.
 ## Status
 
 Builds clean in `Release` with `TreatWarningsAsErrors`. Both schemas apply — PostgreSQL and SQL
-Server — and the stack runs under `docker compose`. 64 domain tests, green. No upload tests: FileTypes, StagedContent and the detectors are uncovered..
+Server — and the stack runs under `docker compose`. `dotnet test` reports 124 tests, all green:
+70 in `Ged.Domain.Tests`, 52 in `Ged.Features.Tests`, 2 in `Ged.Api.Tests`.
 
 Not yet covered: no malware scanning, no audit trail, no full-text search, and no integration test
-against a live database. See the roadmap below.
-
-64 domain tests, green. No upload tests: FileTypes, StagedContent and the detectors are uncovered.
-`dotnet test`; folding them into `tests/` is part of item 1 below.
+against a live database. `BuiltInContentFormatDetector` has no test either — the upload slices
+exercise the policy through a stub detector, so the signature table it carries is unexercised. See
+the roadmap below.
 
 ---
 
