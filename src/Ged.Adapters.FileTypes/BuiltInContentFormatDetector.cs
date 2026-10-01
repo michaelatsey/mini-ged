@@ -7,85 +7,80 @@ using Ged.Core.Ports.FileTypes;
 
 namespace Ged.Adapters.FileTypes;
 
-/// <summary>Identifie un contenu à partir de ses octets, sans aucune dépendance tierce.</summary>
+/// <summary>Identifies content from its bytes alone, with no third-party dependency.</summary>
 /// <remarks>
 /// <para>
-/// Couvre les formats que cette application accepte, et rien d'autre. C'est tout l'intérêt : un
-/// détecteur conçu pour une liste fermée de formats autorisés n'a pas la même mission qu'un détecteur
-/// conçu pour identifier n'importe quoi — le premier répond à « est-ce bien ce que ça prétend être ? »,
-/// le second à « qu'est-ce que c'est que ça ? », et seul le premier est nécessaire pour valider un
-/// téléversement.
+/// Covers the formats this application accepts and nothing else, which is the whole point: a detector
+/// written for a closed allowlist does not have the same job as one written to identify anything. The
+/// first answers "is this what it claims to be?", the second "what is this?", and only the first is
+/// needed to validate an upload.
 /// </para>
 /// <para>
-/// Trois techniques, parce que trois familles de formats en exigent trois :
+/// Three techniques, because three families of format demand three:
 /// </para>
 /// <code>
-/// octets de tête     pdf, png, jpeg, gif, tiff, bmp, rtf, exe, elf
-/// conteneur ZIP      docx, xlsx, pptx (et leurs jumeaux avec macros), odt, ods, odp
-/// conteneur OLE2     doc, xls, ppt — une seule signature, que .msi partage aussi
+/// leading bytes      pdf, png, jpeg, gif, tiff, bmp, rtf, exe, elf
+/// ZIP container      docx, xlsx, pptx (and their macro-enabled twins), odt, ods, odp
+/// OLE2 container     doc, xls, ppt — one signature, which .msi shares as well
 /// </code>
 /// <para>
-/// Deux signatures de tête ne font que deux octets — <c>BM</c> et <c>MZ</c> — et sont confirmées par
-/// la structure qui les suit avant d'être signalées ; sinon, un texte ordinaire commençant par ces
-/// lettres serait refusé comme image ou comme programme.
+/// Two of the leading signatures are only two bytes — <c>BM</c> and <c>MZ</c> — and are confirmed
+/// against the structure behind them before being reported; otherwise ordinary text starting with
+/// those letters would be refused as an image or as a program.
 /// </para>
 /// <para>
-/// Les exécutables sont reconnus volontairement, même si aucune politique ne les accepte. Identifier
-/// un binaire renommé produit « ceci est un EXE » plutôt que « non reconnu », ce qui donne à la fois
-/// un meilleur message et un contrôle plus fort pour les formats texte, dont la condition
-/// d'acceptation est justement que rien ne soit reconnu.
+/// Executables are recognised deliberately, although no policy accepts one. Identifying a renamed
+/// binary yields "this is an EXE" rather than "unrecognised", which is both a better message and a
+/// stronger check for the text formats, whose condition for acceptance is precisely that nothing was
+/// recognised.
 /// </para>
 /// <para>
-/// Les lectures de taille fixe passent par <see cref="ReadInto"/>, qui écrit dans un tampon fourni
-/// par l'appelant — souvent sur la pile. Seules les lectures de taille variable, dont la taille vient
-/// du fichier lui-même, allouent.
+/// Fixed-size reads go through <see cref="ReadInto"/>, which writes into a buffer the caller supplies
+/// — usually on the stack. Only the variable-size reads, whose length comes from the file itself,
+/// allocate.
 /// </para>
 /// </remarks>
 public sealed class BuiltInContentFormatDetector : IContentFormatDetector
 {
     private const int HeaderLength = 512;
 
-    /// <summary>Jusqu'où, dans un fichier, le pointeur d'en-tête Windows peut envoyer le lecteur.</summary>
+    /// <summary>How far into a file the Windows header pointer may send the reader.</summary>
     /// <remarks>
-    /// Les éditeurs de liens le placent dans le premier kilo-octet. La borne empêche un pointeur
-    /// falsifié de transformer une lecture de quatre octets en un déplacement à travers tout le
-    /// fichier téléversé.
+    /// Linkers put it in the first kilobyte. The bound stops a forged pointer from turning a
+    /// four-byte read into a seek across the whole uploaded file.
     /// </remarks>
     private const int MaxExecutableHeaderOffset = 64 * 1024;
 
-    /// <summary>Le nombre maximal de secteurs de répertoire d'un fichier composé suivis.</summary>
+    /// <summary>How many directory sectors of a compound file are followed.</summary>
     /// <remarks>
-    /// Les documents Office tiennent leur répertoire en un à quelques secteurs. Le parcours d'une
-    /// chaîne à travers une entrée hostile est borné ici, et une boucle s'arrête à la même borne.
+    /// Office documents hold their directory in one to a few sectors. Walking a chain through hostile
+    /// input is bounded here, and a loop in that chain stops at the same bound.
     /// </remarks>
     private const int MaxCompoundDirectorySectors = 64;
 
-    /// <summary>Le nombre maximal de secteurs DIFAT parcourus pour localiser un secteur de table d'allocation.</summary>
+    /// <summary>How many DIFAT sectors are walked to locate one allocation-table sector.</summary>
     private const int MaxCompoundDifatHops = 256;
 
-    /// <summary>Le nombre maximal d'entrées qu'un ZIP peut déclarer avant de ne plus être un document Office candidat.</summary>
+    /// <summary>How many entries a ZIP may declare and still be a candidate Office document.</summary>
     /// <remarks>
-    /// Les paquets réels contiennent de quelques dizaines à quelques milliers de parties. La borne
-    /// existe parce que la lecture d'un répertoire central coûte de la mémoire par entrée : sans elle,
-    /// 16 Mo d'entrées vides coûtent 112 Mo à identifier, et un téléversement de 256 Mo plusieurs
-    /// gigaoctets.
+    /// Real packages hold tens to a few thousand parts. The bound exists because reading a central
+    /// directory costs memory per entry: without it, 16 MB of empty entries cost 112 MB to identify,
+    /// and a 256 MB upload several gigabytes.
     /// </remarks>
     private const int MaxZipEntries = 10_000;
 
-    /// <summary>La taille maximale du répertoire central lu, en octets.</summary>
+    /// <summary>The largest central directory read, in bytes.</summary>
     /// <remarks>
-    /// Borne ce que <see cref="MaxZipEntries"/> ne peut pas borner : un seul nom d'entrée peut faire
-    /// 64 Ko.
+    /// Bounds what <see cref="MaxZipEntries"/> cannot: a single entry name may be 64 KB long.
     /// </remarks>
     private const int MaxCentralDirectoryLength = 2 * 1024 * 1024;
 
-    /// <summary>La taille maximale de <c>[Content_Types].xml</c> lue, compressée ou non.</summary>
+    /// <summary>The largest <c>[Content_Types].xml</c> read, compressed or not.</summary>
     /// <remarks>
-    /// Quelques kilo-octets en pratique, quelques dizaines pour une présentation de plusieurs
-    /// centaines de diapositives. La borne s'applique à la sortie décompressée, si bien qu'un
-    /// manifeste dont les données se décompressent au-delà est abandonné à cette longueur. Deflate
-    /// plafonne à environ 1030 pour 1 : 256 Ko de sortie bornent donc aussi bien l'inflation d'un
-    /// manifeste compressé que le coût mémoire d'un lecteur XML qui le chargerait en entier.
+    /// A few kilobytes in practice, a few tens for a presentation of several hundred slides. The bound
+    /// applies to the inflated output, so a manifest whose data expands past it is abandoned at that
+    /// length. Deflate tops out near 1030:1, so 256 KB of output bounds both the inflation of a
+    /// compressed manifest and the memory an XML reader would spend loading it whole.
     /// </remarks>
     private const int MaxManifestLength = 256 * 1024;
 
@@ -126,7 +121,7 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
     private static readonly DetectedFormat LegacyExcel = new("xls", "application/vnd.ms-excel");
     private static readonly DetectedFormat LegacyPowerPoint = new("ppt", "application/vnd.ms-powerpoint");
 
-    /// <summary>Tailles d'en-tête DIB qu'un bitmap peut porter, de BITMAPCOREHEADER (12) à BITMAPV5HEADER (124).</summary>
+    /// <summary>The DIB header sizes a bitmap may carry, BITMAPCOREHEADER (12) to BITMAPV5HEADER (124).</summary>
     private static readonly HashSet<uint> BitmapInfoHeaderSizes = [12, 16, 40, 52, 56, 64, 108, 124];
 
     private static readonly (byte[] Signature, string Extension, string MediaType, SignatureConfirmation? Confirm)[] Leading =
@@ -154,11 +149,10 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
             new("odp", "application/vnd.oasis.opendocument.presentation"),
     };
 
-    /// <summary>Types de contenu de la partie principale, selon la famille qu'ils identifient.</summary>
+    /// <summary>Main-part content types, by the family each one identifies.</summary>
     /// <remarks>
-    /// Les modèles, diaporamas et compléments sont absents volontairement : ils retombent sur un ZIP
-    /// ordinaire et sont refusés en tant que tel, plutôt que d'être présentés comme le type de
-    /// document auquel ils ressemblent.
+    /// Templates, slideshows and add-ins are absent deliberately: they fall back to a plain ZIP and
+    /// are refused as one, rather than being reported as the document type they resemble.
     /// </remarks>
     private static readonly Dictionary<string, OfficeFamily> MainPartTypes = new(StringComparer.Ordinal)
     {
@@ -170,10 +164,10 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
         ["application/vnd.ms-powerpoint.presentation.macroEnabled.main+xml"] = OfficeFamily.PowerPoint,
     };
 
-    /// <summary>Confirme une signature trop courte pour signifier quoi que ce soit à elle seule.</summary>
-    /// <param name="header">Les octets de tête déjà lus.</param>
-    /// <param name="content">Le contenu complet, avec positionnement possible, pour un contrôle qui va au-delà de l'en-tête.</param>
-    /// <returns>Vrai lorsque la structure attendue derrière la signature est réellement présente.</returns>
+    /// <summary>Confirms a signature too short to mean anything on its own.</summary>
+    /// <param name="header">The leading bytes already read.</param>
+    /// <param name="content">The whole content, seekable, for a check that reaches past the header.</param>
+    /// <returns>True when the structure expected behind the signature is really there.</returns>
     private delegate bool SignatureConfirmation(ReadOnlySpan<byte> header, Stream content);
 
     private enum OfficeFamily
@@ -184,11 +178,11 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
     }
 
     /// <inheritdoc />
-    /// <exception cref="NotSupportedException">Le flux ne permet pas le positionnement (seek).</exception>
+    /// <exception cref="NotSupportedException">The stream cannot seek.</exception>
     /// <remarks>
-    /// Un flux sans positionnement est refusé plutôt que lu depuis sa position courante : le contrat
-    /// du port en exige un, et une réponse calculée à partir du milieu d'un fichier est pire que
-    /// pas de réponse du tout.
+    /// A stream that cannot seek is refused rather than read from wherever it stands: the port's
+    /// contract requires one, and an answer computed from the middle of a file is worse than no
+    /// answer at all.
     /// </remarks>
     public DetectedFormat? Detect(Stream content)
     {
@@ -205,8 +199,8 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
         int read = content.ReadAtLeast(buffer, HeaderLength, throwOnEndOfStream: false);
         ReadOnlySpan<byte> header = buffer[..read];
 
-        // Les conteneurs d'abord : leurs signatures sont partagées, donc une correspondance ici
-        // signifie « regarder à l'intérieur », jamais « terminé ».
+        // Containers first: their signatures are shared, so a match here means "look inside", never
+        // "done".
         if (header.StartsWith(Zip))
         {
             return DetectZipFlavour(content, header);
@@ -225,18 +219,17 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
             }
         }
 
-        // Le texte brut, le CSV et le JSON arrivent ici, et c'est correct : ils ne portent aucune
-        // signature, et dire « rien ne correspond » est plus honnête que deviner.
+        // Plain text, CSV and JSON land here, and that is correct: they carry no signature at all,
+        // and saying "nothing matched" is more honest than guessing.
         return null;
     }
 
-    /// <summary>Confirme un bitmap derrière la signature de deux lettres <c>BM</c>.</summary>
+    /// <summary>Confirms a bitmap behind the two-letter <c>BM</c> signature.</summary>
     /// <remarks>
-    /// <c>BM</c> seul, ce ne sont que deux lettres ASCII, et un CSV commençant par <c>BMI,</c> était
-    /// auparavant signalé comme image — et refusé en tant que texte. Un vrai bitmap a des octets
-    /// réservés à zéro, une taille d'en-tête DIB connue, et des données de pixels qui commencent après
-    /// les deux en-têtes et à l'intérieur du fichier. Un texte ne satisfait aucune des trois
-    /// conditions. La taille de fichier déclarée est laissée au catalogue, qui la vérifie déjà.
+    /// <c>BM</c> alone is two ASCII letters, and a CSV beginning <c>BMI,</c> used to be reported as an
+    /// image — and refused as text. A real bitmap has its reserved bytes at zero, a known DIB header
+    /// size, and pixel data starting after both headers and inside the file. Text satisfies none of
+    /// the three. The declared file size is left to the catalogue, which already checks it.
     /// </remarks>
     private static bool IsBitmap(ReadOnlySpan<byte> header, Stream content)
     {
@@ -255,18 +248,17 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
             && pixelOffset <= content.Length;
     }
 
-    /// <summary>Confirme un exécutable Windows derrière la signature de deux lettres <c>MZ</c>.</summary>
+    /// <summary>Confirms a Windows executable behind the two-letter <c>MZ</c> signature.</summary>
     /// <remarks>
     /// <para>
-    /// L'en-tête DOS pointe, à l'offset 0x3C, vers l'en-tête réel, dont la signature est
-    /// <c>PE\0\0</c> pour tout binaire Win32 et .NET, et <c>NE</c>, <c>LE</c> ou <c>LX</c> pour les
-    /// plus anciens. Un texte commençant par <c>MZ</c> a un pointeur ASCII qui ne tombe sur rien de
-    /// tel.
+    /// The DOS header points, at offset 0x3C, at the real header, whose signature is <c>PE\0\0</c>
+    /// for every Win32 and .NET binary and <c>NE</c>, <c>LE</c> or <c>LX</c> for the older ones. Text
+    /// beginning <c>MZ</c> has an ASCII pointer that lands on none of them.
     /// </para>
     /// <para>
-    /// Un exécutable DOS nu, sans en-tête étendu, n'est pas identifié. Il reste refusé en tant que
-    /// texte — son en-tête DOS est rempli d'octets nuls, que l'heuristique texte rejette — et refusé
-    /// en tant que tout autre chose, car il ne correspond à aucun format accepté.
+    /// A bare DOS executable, with no extended header, is not identified. It stays refused as text —
+    /// its DOS header is full of NUL bytes, which the text heuristic rejects — and refused as anything
+    /// else, because it matches no accepted format.
     /// </para>
     /// </remarks>
     private static bool IsWindowsExecutable(ReadOnlySpan<byte> header, Stream content)
@@ -300,24 +292,22 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
             || signature[..2].SequenceEqual("LX"u8);
     }
 
-    /// <summary>Distingue les formats qui partagent la signature ZIP.</summary>
+    /// <summary>Tells apart the formats that share the ZIP signature.</summary>
     /// <remarks>
     /// <para>
-    /// <c>PK\x03\x04</c> identifie un ZIP et rien de plus. Chaque réponse ci-dessous est soit un
-    /// format précis prouvé par la structure de l'archive, soit <c>zip</c> — jamais une exception,
-    /// jamais une supposition. <c>zip</c> est un format reconnu qu'aucune politique n'accepte : tout
-    /// doute aboutit donc à un refus.
+    /// <c>PK\x03\x04</c> identifies a ZIP and nothing more. Every answer below is either a precise
+    /// format proved by the archive's structure or <c>zip</c> — never an exception, never a guess.
+    /// <c>zip</c> is a recognised format no policy accepts, so any doubt ends in a refusal.
     /// </para>
     /// <para>
-    /// <see cref="ZipArchive"/> n'est volontairement pas utilisé. Il matérialise toutes les entrées du
-    /// répertoire central avant de répondre quoi que ce soit, et ignore le nombre d'entrées déclaré
-    /// par l'archive — mesuré : une archive déclarant 10 entrées mais en contenant 200 000 est lue en
-    /// entier, 112 Mo, avant de lever une exception. Lire le répertoire ici, avec des bornes strictes,
-    /// maintient l'identification à coût constant.
+    /// <see cref="ZipArchive"/> is deliberately not used. It materialises every central-directory entry
+    /// before answering anything, and ignores the entry count the archive declares — measured: an
+    /// archive declaring 10 entries while holding 200,000 is read in full, 112 MB, before it throws.
+    /// Reading the directory here, under strict bounds, keeps identification at constant cost.
     /// </para>
     /// <para>
-    /// Le répertoire central fait foi, parce que c'est lui que lisent Office et LibreOffice. Les
-    /// en-têtes locaux ne sont consultés que pour localiser les données.
+    /// The central directory is authoritative, because it is what Office and LibreOffice read. Local
+    /// headers are consulted only to locate data.
     /// </para>
     /// </remarks>
     private static DetectedFormat DetectZipFlavour(Stream content, ReadOnlySpan<byte> header)
@@ -335,13 +325,12 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
         return DetectOfficeOpenXml(content, entries) ?? GenericZip;
     }
 
-    /// <summary>Identifie un paquet OpenDocument à partir de sa première entrée.</summary>
+    /// <summary>Identifies an OpenDocument package from its first entry.</summary>
     /// <remarks>
-    /// La spécification OpenDocument rend ce test exact : la première entrée s'appelle
-    /// <c>mimetype</c>, est stockée sans compression, et contient le type de média tel quel. Les
-    /// trois conditions sont requises, de sorte que la réponse provient de l'en-tête déjà lu — sans
-    /// déplacement, sans décompression. Un paquet qui déroge à l'une des trois n'est pas traité comme
-    /// OpenDocument, quel que soit son contenu.
+    /// The OpenDocument specification makes this test exact: the first entry is named <c>mimetype</c>,
+    /// is stored uncompressed, and holds the media type verbatim. All three are required, so the answer
+    /// comes from the header already read — no seek, no decompression. A package departing from any one
+    /// of the three is not treated as OpenDocument, whatever it holds.
     /// </remarks>
     private static DetectedFormat? DetectOpenDocument(ZipEntryRecord mimetype, ReadOnlySpan<byte> header)
     {
@@ -371,24 +360,22 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
         return OpenDocumentTypes.GetValueOrDefault(mediaType);
     }
 
-    /// <summary>Identifie un paquet Office Open XML à partir de son manifeste de types de contenu.</summary>
+    /// <summary>Identifies an Office Open XML package from its content-types manifest.</summary>
     /// <remarks>
     /// <para>
-    /// C'est le manifeste, et non les noms des parties, qui décide. Office choisit d'exécuter ou non
-    /// les macros d'après le type de contenu de la partie principale : c'est donc ce fait qu'un
-    /// contrôle des macros doit lire ; et la partie principale peut légitimement s'appeler
-    /// <c>document2.xml</c>, ce qui met en échec un contrôle fondé sur les seuls noms.
+    /// The manifest decides, not the part names. Office chooses whether to run macros from the main
+    /// part's content type, so that is the fact a macro check has to read; and the main part may
+    /// legitimately be called <c>document2.xml</c>, which defeats a check built on names alone.
     /// </para>
     /// <para>
-    /// Tout signal VBA — un type de contenu avec macros, le type de contenu du projet VBA, ou une
-    /// partie nommée <c>vbaProject.bin</c> — transforme la réponse en son jumeau avec macros. C'est
-    /// plus strict qu'Office, qui ignore une partie VBA sous un type de contenu sans macros, et c'est
-    /// délibéré.
+    /// Any VBA signal — a macro-enabled content type, the VBA project's content type, or a part named
+    /// <c>vbaProject.bin</c> — turns the answer into its macro-enabled twin. That is stricter than
+    /// Office, which ignores a VBA part under a macro-free content type, and it is deliberate.
     /// </para>
     /// <para>
-    /// Les noms de parties sont indexés une fois avant la boucle. Un manifeste peut déclarer autant
-    /// de surcharges que l'archive a d'entrées, et confirmer chacune par un balayage de la liste
-    /// rendait l'identification quadratique sur un paquet volumineux.
+    /// Part names are indexed once before the loop. A manifest may declare as many overrides as the
+    /// archive has entries, and confirming each one by scanning the list made identification quadratic
+    /// on a large package.
     /// </para>
     /// </remarks>
     private static DetectedFormat? DetectOfficeOpenXml(Stream content, List<ZipEntryRecord> entries)
@@ -430,11 +417,10 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
         };
     }
 
-    /// <summary>Résout la famille Office déclarée par le manifeste, ou null lorsqu'aucune ne l'est.</summary>
+    /// <summary>Resolves the Office family the manifest declares, or null when none is.</summary>
     /// <remarks>
-    /// Une partie principale que le manifeste nomme mais que l'archive ne contient pas ne prouve rien,
-    /// et deux parties principales de familles différentes ne font pas un document que l'on puisse
-    /// nommer.
+    /// A main part the manifest names but the archive does not hold proves nothing, and two main parts
+    /// from different families do not make a document anyone can name.
     /// </remarks>
     private static OfficeFamily? ResolveOfficeFamily(
         List<ZipEntryRecord> entries,
@@ -480,26 +466,24 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
         }
     }
 
-    /// <summary>Lit le répertoire central, ou renvoie null lorsqu'il n'est pas digne de confiance.</summary>
+    /// <summary>Reads the central directory, or returns null when it cannot be trusted.</summary>
     /// <remarks>
     /// <para>
-    /// Le ZIP64 est lu, pas refusé. La spécification l'autorise même lorsqu'aucune limite n'est
-    /// dépassée, et certains outils l'utilisent de toute façon — Info-ZIP dès que son entrée est
-    /// lue en flux, DotNetZip sur chaque entrée. Un document réempaqueté par l'un ou l'autre est
-    /// légitime : les valeurs 64 bits sont donc résolues, puis soumises aux mêmes bornes que tout le
-    /// reste.
+    /// ZIP64 is read, not refused. The specification allows it even where no limit is exceeded, and
+    /// some tools use it anyway — Info-ZIP as soon as its input is streamed, DotNetZip on every entry.
+    /// A document repackaged by either is legitimate, so the 64-bit values are resolved and then held
+    /// to the same bounds as everything else.
     /// </para>
     /// <para>
-    /// Tout autre doute structurel renvoie null plutôt que d'être réparé : une archive multi-volumes,
-    /// des données avant la première entrée, des octets après l'enregistrement de fin, des
-    /// enregistrements 32 bits et 64 bits en désaccord, un nombre d'entrées ou une taille de
-    /// répertoire au-delà des bornes, un en-tête qui déborde du répertoire. Les documents Office sont
-    /// des fichiers uniques écrits en une seule passe ; les archives qui ne le sont pas ne sont pas ce
-    /// qu'un document Office prétend être.
+    /// Every other structural doubt returns null rather than being repaired: a multi-volume archive,
+    /// data before the first entry, bytes after the end record, 32-bit and 64-bit records that
+    /// disagree, an entry count or a directory size past the bounds, a header running off the end of
+    /// the directory. Office documents are single files written in one pass; archives that are not are
+    /// not what an Office document claims to be.
     /// </para>
     /// <para>
-    /// Rejeter les données situées avant la première entrée ferme aussi la forme auto-extractible, où
-    /// un ZIP se cache derrière un préfixe qu'un autre lecteur prendrait pour le vrai fichier.
+    /// Rejecting data before the first entry also closes the self-extracting shape, where a ZIP hides
+    /// behind a prefix another reader would take for the real file.
     /// </para>
     /// </remarks>
     private static List<ZipEntryRecord>? ReadCentralDirectory(Stream content)
@@ -538,11 +522,10 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
         return ParseEntries(directory, (int)end.TotalEntries, directoryOffset);
     }
 
-    /// <summary>Localise l'enregistrement de fin, ou -1 lorsqu'il n'y en a pas d'exploitable.</summary>
+    /// <summary>Locates the end record, or -1 when there is no usable one.</summary>
     /// <remarks>
-    /// L'enregistrement est recherché depuis la fin, et son commentaire doit s'étendre exactement
-    /// jusqu'à la fin du fichier : une signature plantée dans le commentaire ne peut pas le masquer,
-    /// et rien ne peut le suivre.
+    /// The record is searched for from the end, and its comment must reach exactly the end of the file:
+    /// a signature planted inside the comment cannot shadow it, and nothing can follow it.
     /// </remarks>
     private static int FindEndRecord(ReadOnlySpan<byte> tail)
     {
@@ -558,7 +541,7 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
         return -1;
     }
 
-    /// <summary>Lit les champs de l'enregistrement de fin 32 bits.</summary>
+    /// <summary>Reads the fields of the 32-bit end record.</summary>
     private static EndRecord ReadClassicEndRecord(ReadOnlySpan<byte> record, long eocdPosition) =>
         new(
             Disk: BinaryPrimitives.ReadUInt16LittleEndian(record[4..]),
@@ -569,20 +552,20 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
             DirectoryOffset: BinaryPrimitives.ReadUInt32LittleEndian(record[16..]),
             End: (ulong)eocdPosition);
 
-    /// <summary>Choisit entre l'enregistrement 32 bits et son homologue ZIP64.</summary>
+    /// <summary>Chooses between the 32-bit record and its ZIP64 counterpart.</summary>
     /// <remarks>
-    /// Un localisateur présent mais refusé n'autorise pas de repli sur les champs étroits : l'archive
-    /// a déclaré des valeurs 64 bits, et lire les autres décrirait une autre archive.
+    /// A locator that is present but refused does not allow a fallback to the narrow fields: the
+    /// archive declared 64-bit values, and reading the others would describe a different archive.
     /// </remarks>
     private static EndRecord? ResolveEndRecord(Stream content, long eocdPosition, EndRecord classic) =>
         ReadZip64EndRecord(content, eocdPosition, classic) is { } zip64
             ? zip64
             : HasZip64Locator(content, eocdPosition) ? null : classic;
 
-    /// <summary>Vérifie que l'enregistrement de fin décrit une archive que ce détecteur sait lire.</summary>
+    /// <summary>Checks that the end record describes an archive this detector can read.</summary>
     /// <remarks>
-    /// L'ordre des conditions n'est pas indifférent : la taille est bornée avant d'être additionnée à
-    /// l'offset, de sorte que la dernière comparaison ne peut pas déborder.
+    /// The order of the conditions matters: the size is bounded before being added to the offset, so
+    /// the last comparison cannot overflow.
     /// </remarks>
     private static bool IsUsable(EndRecord end) =>
         end.Disk == 0
@@ -593,10 +576,10 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
         && end.DirectoryOffset <= end.End
         && end.DirectoryOffset + end.DirectorySize == end.End;
 
-    /// <summary>Découpe le répertoire central en entrées, ou renvoie null au premier désaccord.</summary>
+    /// <summary>Splits the central directory into entries, or returns null at the first disagreement.</summary>
     /// <remarks>
-    /// Des octets restants signifient que le nombre déclaré et le répertoire sont en désaccord —
-    /// l'incohérence que <see cref="ZipArchive"/> ne signale qu'après avoir tout lu.
+    /// Bytes left over mean the declared count and the directory disagree — the inconsistency
+    /// <see cref="ZipArchive"/> reports only after reading everything.
     /// </remarks>
     private static List<ZipEntryRecord>? ParseEntries(byte[] directory, int totalEntries, long directoryOffset)
     {
@@ -619,8 +602,8 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
             : null;
     }
 
-    /// <summary>Lit une entrée du répertoire central à une position donnée.</summary>
-    /// <returns>L'entrée et la longueur de son enregistrement, ou null lorsqu'elle n'est pas lisible.</returns>
+    /// <summary>Reads one central-directory entry at a given position.</summary>
+    /// <returns>The entry and the length of its record, or null when it cannot be read.</returns>
     private static (ZipEntryRecord Entry, int RecordLength)? ParseEntry(
         ReadOnlySpan<byte> directory, int position, long directoryOffset)
     {
@@ -669,11 +652,11 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
         return (record, recordLength);
     }
 
-    /// <summary>Lit l'enregistrement de fin ZIP64, ou null lorsque l'archive n'en a pas ou qu'il n'est pas digne de confiance.</summary>
+    /// <summary>Reads the ZIP64 end record, or null when the archive has none or it cannot be trusted.</summary>
     /// <remarks>
-    /// Chaque champ 32 bits doit soit contenir la sentinelle, soit concorder avec son homologue
-    /// 64 bits — Info-ZIP écrit les deux. Deux enregistrements en désaccord décrivent deux archives,
-    /// et un lecteur qui en choisit un est précisément le lecteur que vise un attaquant.
+    /// Every 32-bit field must either hold the sentinel or agree with its 64-bit counterpart — Info-ZIP
+    /// writes both. Two records that disagree describe two archives, and a reader that picks one of
+    /// them is exactly the reader an attacker is aiming at.
     /// </remarks>
     private static EndRecord? ReadZip64EndRecord(Stream content, long eocdPosition, EndRecord classic)
     {
@@ -701,9 +684,8 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
             return null;
         }
 
-        // La taille exclut les 12 premiers octets. Elle doit se refermer exactement sur le
-        // localisateur, ce qui est vérifié sans une addition qu'une taille falsifiée pourrait faire
-        // déborder.
+        // The size excludes the first 12 bytes. It has to close exactly on the locator, checked
+        // without an addition that a forged size could overflow.
         ulong recordSize = BinaryPrimitives.ReadUInt64LittleEndian(record[4..]);
 
         if (recordSize < Zip64EndOfCentralDirectoryLength - 12
@@ -733,11 +715,11 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
         static bool Agrees(ulong narrow, ulong sentinel, ulong wide) => narrow == sentinel || narrow == wide;
     }
 
-    /// <summary>Indique si un localisateur ZIP64 précède l'enregistrement de fin, qu'il soit valide ou non.</summary>
+    /// <summary>Whether a ZIP64 locator precedes the end record, valid or not.</summary>
     /// <remarks>
-    /// Un localisateur que <see cref="ReadZip64EndRecord"/> a refusé ne doit pas entraîner un repli
-    /// sur l'enregistrement 32 bits : l'archive a déclaré des valeurs 64 bits, et lire les valeurs
-    /// étroites à la place décrirait une autre archive.
+    /// A locator <see cref="ReadZip64EndRecord"/> refused must not lead to a fallback on the 32-bit
+    /// record: the archive declared 64-bit values, and reading the narrow ones instead would describe
+    /// a different archive.
     /// </remarks>
     private static bool HasZip64Locator(Stream content, long eocdPosition)
     {
@@ -748,12 +730,11 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
             && BinaryPrimitives.ReadUInt32LittleEndian(signature) == Zip64LocatorSignature;
     }
 
-    /// <summary>Remplace les tailles et l'offset sentinelles par leurs valeurs ZIP64, ou null lorsqu'elles sont absentes.</summary>
+    /// <summary>Replaces sentinel sizes and offset with their ZIP64 values, or null when those are absent.</summary>
     /// <remarks>
-    /// Le champ étendu ne liste que les valeurs dont l'emplacement 32 bits contient la sentinelle,
-    /// toujours dans le même ordre : taille décompressée, taille compressée, offset de l'en-tête
-    /// local, disque de départ. Une sentinelle sans sa valeur, ou un disque de départ différent de
-    /// zéro, n'est pas une entrée que ce détecteur sait situer.
+    /// The extra field lists only the values whose 32-bit slot holds the sentinel, always in the same
+    /// order: uncompressed size, compressed size, local header offset, start disk. A sentinel without
+    /// its value, or a start disk other than zero, is not an entry this detector can locate.
     /// </remarks>
     private static (long Uncompressed, long Compressed, long LocalHeaderOffset)? ResolveZip64Sizes(
         uint uncompressed, uint compressed, uint localHeaderOffset, ushort startDisk, ReadOnlySpan<byte> extra)
@@ -792,10 +773,10 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
         }
     }
 
-    /// <summary>Localise un champ étendu par son identifiant, ou rend une portée vide.</summary>
+    /// <summary>Locates an extra field by its identifier, or yields an empty span.</summary>
     /// <remarks>
-    /// Une portée vide vaut « absent » : l'appelant compare sa longueur à ce dont il a besoin, et une
-    /// longueur nulle échoue à cette comparaison comme le ferait un champ tronqué.
+    /// An empty span means "absent": the caller compares its length against what it needs, and a zero
+    /// length fails that comparison exactly as a truncated field would.
     /// </remarks>
     private static ReadOnlySpan<byte> FindExtraField(ReadOnlySpan<byte> extra, ushort wanted)
     {
@@ -820,12 +801,11 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
         return default;
     }
 
-    /// <summary>Lit les déclarations du manifeste — nom de partie pour les surcharges, type de contenu pour toutes.</summary>
+    /// <summary>Reads the manifest's declarations — part name for overrides, content type for all.</summary>
     /// <remarks>
-    /// La décompression est bornée sur la sortie, pas sur la taille déclarée : une taille déclarée
-    /// est écrite par celui qui a construit le fichier. Le lecteur XML refuse les DTD et ne résout
-    /// rien, si bien qu'aucune entité ne peut s'étendre et qu'aucune ressource externe ne peut être
-    /// récupérée.
+    /// Decompression is bounded on the output, not on the declared size: a declared size is written by
+    /// whoever built the file. The XML reader prohibits DTDs and resolves nothing, so no entity can
+    /// expand and no external resource can be fetched.
     /// </remarks>
     private static List<(string? PartName, string ContentType)>? ReadManifest(Stream content, ZipEntryRecord manifest)
     {
@@ -867,7 +847,7 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
         return xml.Length == manifest.UncompressedSize ? ReadContentTypes(xml) : null;
     }
 
-    /// <summary>Extrait les couples (partie, type de contenu) du manifeste déjà décompressé.</summary>
+    /// <summary>Extracts the (part, content type) pairs from the already inflated manifest.</summary>
     private static List<(string? PartName, string ContentType)>? ReadContentTypes(byte[] xml)
     {
         var settings = new XmlReaderSettings
@@ -903,10 +883,10 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
         return contentTypes;
     }
 
-    /// <summary>Décompresse au plus <paramref name="limit"/> octets, plus un pour détecter un dépassement.</summary>
+    /// <summary>Inflates at most <paramref name="limit"/> bytes, plus one to detect an overrun.</summary>
     /// <remarks>
-    /// Le tampon de travail vient du pool : il fait toujours la taille de la borne, alors qu'un
-    /// manifeste réel en occupe quelques pour cent. Seul le résultat, à sa taille exacte, est alloué.
+    /// The working buffer comes from the pool: it is always the size of the bound, while a real
+    /// manifest fills a few per cent of it. Only the result, at its exact size, is allocated.
     /// </remarks>
     private static byte[] Inflate(byte[] compressed, int limit)
     {
@@ -915,8 +895,8 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
 
         try
         {
-            // Un octet au-delà de la limite signifie que l'entrée se décompresse au-delà ; le contrôle
-            // de taille de l'appelant échoue alors, car aucun manifeste accepté n'est aussi volumineux.
+            // One byte past the limit means the entry inflates past it; the caller's size check then
+            // fails, because no accepted manifest is that large.
             int read = inflater.ReadAtLeast(output.AsSpan(0, limit + 1), limit + 1, throwOnEndOfStream: false);
 
             return output.AsSpan(0, read).ToArray();
@@ -927,10 +907,10 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
         }
     }
 
-    /// <summary>Lit exactement <paramref name="count"/> octets à un offset donné, ou null lorsqu'ils ne sont pas présents.</summary>
+    /// <summary>Reads exactly <paramref name="count"/> bytes at an offset, or null when they are not there.</summary>
     /// <remarks>
-    /// Réservé aux lectures dont la taille vient du fichier. Pour une taille connue à la compilation,
-    /// <see cref="ReadInto"/> évite l'allocation.
+    /// For reads whose length comes from the file. Where the length is known at compile time,
+    /// <see cref="ReadInto"/> avoids the allocation.
     /// </remarks>
     private static byte[]? ReadAt(Stream content, long offset, int count)
     {
@@ -944,8 +924,8 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
         return ReadInto(content, offset, buffer) ? buffer : null;
     }
 
-    /// <summary>Lit de quoi remplir <paramref name="buffer"/> à un offset donné.</summary>
-    /// <returns>Vrai lorsque le tampon a été rempli en entier.</returns>
+    /// <summary>Reads enough to fill <paramref name="buffer"/> at a given offset.</summary>
+    /// <returns>True when the buffer was filled completely.</returns>
     private static bool ReadInto(Stream content, long offset, Span<byte> buffer)
     {
         if (offset < 0 || offset + buffer.Length > content.Length)
@@ -958,23 +938,21 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
         return content.ReadAtLeast(buffer, buffer.Length, throwOnEndOfStream: false) == buffer.Length;
     }
 
-    /// <summary>Distingue les formats Office historiques qui partagent la signature OLE2.</summary>
+    /// <summary>Tells apart the legacy Office formats that share the OLE2 signature.</summary>
     /// <remarks>
     /// <para>
-    /// <c>D0 CF 11 E0</c> identifie le conteneur : .doc, .xls, .ppt et .msi sont le même format à ce
-    /// niveau. La variante est donnée par le nom d'un flux situé directement sous le stockage racine.
+    /// <c>D0 CF 11 E0</c> identifies the container: .doc, .xls, .ppt and .msi are one format at that
+    /// level. The flavour comes from the name of a stream sitting directly under the root storage.
     /// </para>
     /// <para>
-    /// Seuls les enfants directs de la racine comptent. Un .xls qui incorpore un document Word
-    /// contient lui aussi un flux <c>WordDocument</c>, un stockage plus bas ; un balayage d'octets ne
-    /// peut pas distinguer les deux, et trouvait auparavant le nom dans le texte du document aussi
-    /// facilement que dans le répertoire.
+    /// Only the root's direct children count. An .xls embedding a Word document also holds a
+    /// <c>WordDocument</c> stream, one storage further down; a byte scan cannot tell the two apart, and
+    /// used to find the name in the document's text as readily as in the directory.
     /// </para>
     /// <para>
-    /// La chaîne du répertoire est suivie à travers la table d'allocation, avec des bornes strictes
-    /// sur les secteurs, les sauts DIFAT et la taille de l'arbre. Toute incohérence donne
-    /// <c>ole2</c> — un conteneur reconnu qu'aucune politique n'accepte — plutôt qu'une supposition
-    /// ou une exception.
+    /// The directory chain is followed through the allocation table, under strict bounds on sectors,
+    /// DIFAT hops and tree size. Any inconsistency yields <c>ole2</c> — a recognised container no
+    /// policy accepts — rather than a guess or an exception.
     /// </para>
     /// </remarks>
     private static DetectedFormat DetectCompoundFileFlavour(Stream content, ReadOnlySpan<byte> header)
@@ -1005,15 +983,14 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
             matches++;
         }
 
-        // Aucun : un .msi ou un autre conteneur. Plusieurs : un fichier qui revendique deux formats à la fois.
+        // None: a .msi or another container. Several: a file claiming two formats at once.
         return matches == 1 ? match! : GenericCompoundFile;
     }
 
-    /// <summary>Lit les noms des flux situés directement sous le stockage racine, ou null lorsqu'ils ne sont pas dignes de confiance.</summary>
+    /// <summary>Reads the names of the streams directly under the root storage, or null when they cannot be trusted.</summary>
     /// <remarks>
-    /// Disposition de l'en-tête selon [MS-CFB] 2.2 : la version 3 utilise des secteurs de 512 octets,
-    /// la version 4 des secteurs de 4096 octets, et les deux doivent concorder. Le secteur <c>n</c>
-    /// commence à <c>(n + 1) × taille de secteur</c>.
+    /// Header layout per [MS-CFB] 2.2: version 3 uses 512-byte sectors, version 4 uses 4096-byte
+    /// sectors, and the two fields must agree. Sector <c>n</c> starts at <c>(n + 1) × sector size</c>.
     /// </remarks>
     private static HashSet<string>? ReadCompoundRootStreams(Stream content, ReadOnlySpan<byte> header)
     {
@@ -1036,19 +1013,18 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
             return null;
         }
 
-        // L'entrée 0 est le stockage racine (type 5) ; son enfant est le sommet d'un arbre de ses
-        // enfants, reliés par les frères gauche et droit.
+        // Entry 0 is the root storage (type 5); its child is the top of a tree of the root's own
+        // children, linked by left and right siblings.
         return entries.Length >= DirectoryEntryLength && entries[0x42] == 5
             ? CollectRootStreams(entries)
             : null;
     }
 
-    /// <summary>Lit les secteurs du répertoire, dans l'ordre de la chaîne, ou null au premier doute.</summary>
+    /// <summary>Reads the directory sectors, in chain order, or null at the first doubt.</summary>
     /// <remarks>
-    /// La chaîne est parcourue avant d'être lue : le nombre de secteurs est alors connu, et le
-    /// répertoire tient dans une seule allocation à sa taille exacte plutôt que dans une liste qui
-    /// double et se recopie. Un secteur hors bornes échoue à l'une ou l'autre des deux passes, et les
-    /// deux répondent null.
+    /// The chain is walked before it is read: the sector count is then known, and the directory fits in
+    /// a single allocation of its exact size rather than a list that doubles and copies itself. A
+    /// sector out of bounds fails one pass or the other, and both answer null.
     /// </remarks>
     private static byte[]? ReadDirectory(Stream content, ReadOnlySpan<byte> header, int sectorShift)
     {
@@ -1089,10 +1065,10 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
         static bool Contains(ReadOnlySpan<uint> seen, uint sector) => seen.IndexOf(sector) >= 0;
     }
 
-    /// <summary>Parcourt l'arbre des enfants de la racine et rend les noms de ceux qui sont des flux.</summary>
+    /// <summary>Walks the tree of the root's children and yields the names of those that are streams.</summary>
     /// <remarks>
-    /// Seuls les frères gauche et droit sont suivis : descendre dans l'enfant d'une entrée mènerait
-    /// aux flux d'un stockage imbriqué, que la racine ne possède pas directement.
+    /// Only left and right siblings are followed: descending into an entry's own child would reach the
+    /// streams of a nested storage, which the root does not hold directly.
     /// </remarks>
     private static HashSet<string>? CollectRootStreams(byte[] entries)
     {
@@ -1136,7 +1112,7 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
         return streams;
     }
 
-    /// <summary>L'entrée de la table d'allocation pour un secteur, ou null lorsqu'elle est hors bornes.</summary>
+    /// <summary>The allocation-table entry for a sector, or null when it falls out of bounds.</summary>
     private static uint? NextSector(Stream content, ReadOnlySpan<byte> header, int sectorShift, uint current)
     {
         uint entriesPerSector = (uint)(1 << sectorShift) / 4;
@@ -1153,10 +1129,10 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
         return ReadInto(content, offset, value) ? BinaryPrimitives.ReadUInt32LittleEndian(value) : null;
     }
 
-    /// <summary>Localise le secteur de table d'allocation d'un index, via la DIFAT de l'en-tête puis sa chaîne.</summary>
+    /// <summary>Locates an index's allocation-table sector, through the header DIFAT and then its chain.</summary>
     /// <remarks>
-    /// Les 109 premiers index sont dans l'en-tête déjà lu. Au-delà, chaque secteur DIFAT contient
-    /// <c>entriesPerSector - 1</c> index, son dernier emplacement pointant vers le suivant.
+    /// The first 109 indexes are in the header already read. Past those, each DIFAT sector holds
+    /// <c>entriesPerSector - 1</c> indexes, its last slot pointing at the next one.
     /// </remarks>
     private static uint? FatSectorFor(Stream content, ReadOnlySpan<byte> header, int sectorShift, uint fatIndex)
     {
@@ -1191,7 +1167,7 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
             : null;
     }
 
-    /// <summary>Ce que le répertoire central indique sur une entrée — les seuls faits dont l'identification a besoin.</summary>
+    /// <summary>What the central directory states about an entry — the only facts identification needs.</summary>
     private sealed record ZipEntryRecord(
         string Name,
         ushort Flags,
@@ -1200,14 +1176,14 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
         long UncompressedSize,
         long LocalHeaderOffset);
 
-    /// <summary>Les faits de l'enregistrement de fin, élargis pour que les formes 32 bits et ZIP64 partagent un même contrôle.</summary>
-    /// <param name="Disk">Le numéro de ce disque.</param>
-    /// <param name="DirectoryDisk">Le disque où commence le répertoire central.</param>
-    /// <param name="EntriesOnDisk">Les entrées présentes sur ce disque.</param>
-    /// <param name="TotalEntries">Les entrées de l'archive entière.</param>
-    /// <param name="DirectorySize">La longueur du répertoire central, en octets.</param>
-    /// <param name="DirectoryOffset">L'endroit où commence le répertoire central.</param>
-    /// <param name="End">L'endroit où commence l'enregistrement qui suit le répertoire central.</param>
+    /// <summary>The end record's facts, widened so the 32-bit and ZIP64 shapes share one check.</summary>
+    /// <param name="Disk">The number of this disk.</param>
+    /// <param name="DirectoryDisk">The disk the central directory starts on.</param>
+    /// <param name="EntriesOnDisk">The entries present on this disk.</param>
+    /// <param name="TotalEntries">The entries of the whole archive.</param>
+    /// <param name="DirectorySize">The length of the central directory, in bytes.</param>
+    /// <param name="DirectoryOffset">Where the central directory starts.</param>
+    /// <param name="End">Where the record following the central directory starts.</param>
     private sealed record EndRecord(
         ulong Disk,
         ulong DirectoryDisk,
