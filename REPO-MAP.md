@@ -1,6 +1,6 @@
 # REPO MAP — mini-ged
 
-Generated 2026-09-18 from commit `ee6606d` plus uncommitted changes.
+Generated 2026-10-01 from commit `f6b0a60`.
 Regenerate with `./scripts/repo-map.sh` — never edit by hand.
 
 ---
@@ -21,17 +21,18 @@ MicroKit.Persistence                           7 files     478 lines
 MicroKit.Result.AspNetCore                     2 files     135 lines
 MicroKit.Result                               29 files    2726 lines
 Ged.Adapters.FileTypes.FileSignatures          2 files      77 lines
-Ged.Adapters.FileTypes                         2 files     231 lines
+Ged.Adapters.FileTypes                         2 files    1217 lines
 Ged.Adapters.Persistence.PostgreSql            3 files     152 lines
 Ged.Adapters.Persistence.SqlServer             3 files     161 lines
-Ged.Adapters.Persistence                      21 files    1143 lines
+Ged.Adapters.Persistence                      20 files    1132 lines
 Ged.Adapters.Storage.FileSystem                2 files     204 lines
 Ged.Adapters.Storage                           2 files      99 lines
 Ged.Core                                       9 files     275 lines
-Ged.Domain                                    51 files    2563 lines
-Ged.Features                                  48 files    3402 lines
-Ged.Domain.Tests                              10 files     828 lines
-Ged.Features.Tests                            17 files    1375 lines
+Ged.Domain                                    51 files    2574 lines
+Ged.Features                                  48 files    3607 lines
+Ged.Api.Tests                                  2 files     101 lines
+Ged.Domain.Tests                              10 files     850 lines
+Ged.Features.Tests                            21 files    1786 lines
 ```
 
 ## Reference graph
@@ -87,6 +88,9 @@ Ged.Domain
     -> MicroKit.Domain MicroKit.Persistence.Abstractions 
 Ged.Features
     -> Ged.Core Ged.Domain MicroKit.Core 
+Ged.Api.Tests
+    -> Ged.Api 
+    packages: 5
 Ged.Domain.Tests
     -> Ged.Domain 
     packages: 4
@@ -132,6 +136,7 @@ src/Ged.Adapters.Storage.FileSystem
 src/Ged.Core
 src/Ged.Domain
 src/Ged.Features
+tests/Ged.Api.Tests
 tests/Ged.Domain.Tests
 tests/Ged.Features.Tests
 tests/scripts
@@ -262,16 +267,16 @@ src/Ged.Adapters.FileTypes/registration.md ```csharp
 ## Recent history
 
 ```
+f6b0a60 docs(filetypes): translate BuiltInContentFormatDetector comments to English
+85ef11f chore(persistence): remove the duplicate DetectedFormat declaration
+b97c273 feat(uploads): accept an image under another image's extension
+0ab2d0f fix(blobs): report "no previous location" as null, not Guid.Empty (#31)
+3bbb9a2 fix(scripts): judge audit.sh's placeholders by the value, not the line (#30)
+800ebb5 chore(tests): guard that the host applies the upload transport limits (#28)
+d052a0e feat(filetypes): identify macro-enabled OOXML and read the real OLE2 directory (#27)
+d06ad66 fix(scripts): make the three guards fail when they find something (#25)
 ee6606d fix(blobs): make the location serving reads a pointer, not a state (#23)
 34e4f57 chore: regenerate REPO-MAP.md (#18)
 f9a8002 docs(claude-md): correct the four statements the code contradicts (#17)
 41f3ee4 fix(sql): declare every parameter's type, or refuse to send it (#15)
-ad61d58 fix(uploads): bound a request by the configured ceiling, and size the container for it (#14)
-c335e2c fix(blobs): restore purged digests and stop the purge racing a dedup (#11)
-bcb6950 chore: add a /fix-issue project skill (#10)
-d4edfbc chore(compose): bind-mount the filesystem storage (#3)
-c360c92 chore: add CLAUDE.md for Claude Code sessions (#2)
-6e55ac4 Repository tooling, database documentation, and a Dockerfile fix (#1)
-680fa01 feat: mini-ged — document management platform on .NET 10
-747b270 feat(api): versioned composition root with OpenAPI, security and throttling
 ```
