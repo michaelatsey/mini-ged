@@ -42,7 +42,7 @@ public sealed class ContainerUploadBudgetTests
     /// <summary>The hardening block that carries the tmpfs the staging area depends on.</summary>
     private const string HardeningAnchor = "<<: *api-hardening";
 
-    private static readonly string[] Compose = File.ReadAllLines(RepositoryFile("compose.yaml"));
+    private static readonly string[] Compose = File.ReadAllLines(Repository.FileAt("compose.yaml"));
 
     [Fact]
     public void The_stack_states_the_upload_ceiling_it_was_sized_for()
@@ -154,20 +154,5 @@ public sealed class ContainerUploadBudgetTests
                 'g' => number * 1024 * 1024 * 1024,
                 _ => number,
             };
-    }
-
-    /// <summary>Locates a file at the repository root, walking up from the test binaries.</summary>
-    private static string RepositoryFile(string name)
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "MiniGed.slnx")))
-        {
-            directory = directory.Parent;
-        }
-
-        directory.ShouldNotBeNull("The repository root was not found above the test binaries.");
-
-        return Path.Combine(directory.FullName, name);
     }
 }

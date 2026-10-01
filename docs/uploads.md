@@ -38,6 +38,7 @@ format
   "Uploads": {
     "AllowedFormats": [ "pdf", "docx", "xlsx", "pptx", "odt", "ods", "odp",
                         "txt", "csv", "jpeg", "png", "tiff", "bmp" ],
+    "ReclassifiableGroups": [ "images" ],
     "MaxSizeBytes": 268435456,
     "MaxSizeByFormat": { "csv": 10485760, "png": 26214400 },
     "FormatsByDocType": { "CONTRACT": [ "pdf" ], "INVOICE": [ "pdf", "xlsx" ] },
@@ -105,6 +106,69 @@ Browsers and HTTP clients disagree about the media type of the same file — `te
 uploads while stopping no attacker, who controls that header entirely. Turn it on only for a known,
 controlled client.
 
+### One image under another image's extension
+
+A PNG a user saved as `photo.jpg` is refused by everything above, and correctly: the name contradicts
+the bytes. It is also a naming accident rather than an attack, and the only thing the refusal achieved
+was to make the user rename the file.
+
+```json
+"ReclassifiableGroups": [ "images" ]
+```
+
+With that key, content of an allowed format arriving under the extension of another allowed format in
+the same set is accepted as what it *is*, and the stored name takes the detected format's own
+extension — `photo.jpg` becomes `photo.png`. OWASP's input-validation guidance asks for that
+specifically: set the extension of a stored image from the type detected in its content, and check
+that type against a defined list of image types.
+
+Five conditions, and all five:
+
+| | |
+|---|---|
+| one family | both formats sit in a set that is eligible in code **and** named in `ReclassifiableGroups` |
+| still allowed | the detected format resolves through `AllowedFormats` and `FormatsByDocType` like any extension |
+| carries no code | the detected format is not flagged `CarriesExecutableContent` |
+| internally consistent | the detected format's own header check passes — BMP has one |
+| its own ceiling | the size is within the **detected** format's limit: a PNG named `.tif` is refused at 25 MiB, not 50 |
+
+Anything else is `ContentDoesNotMatchExtension`, with the message it always had.
+
+That last condition is one-way, and deliberately so. The **claimed** format's ceiling still applies
+first, before a byte is read — it is the number that bounds the staging of the request body — so a
+30 MiB TIFF named `.png` is refused at PNG's 25 MiB and never reaches the detector at all.
+Reclassification can only tighten the limit, never lift it: raising the staging bound to the widest
+ceiling in the family would undo what `MaxSizeBytes` is there for, which is to stop an oversized
+upload at the limit instead of writing it to a temp volume in full and refusing it afterwards. The
+effective ceiling is therefore the smaller of the two, and a file that needs the larger one has to
+arrive under its own extension.
+
+Two wider versions of this were rejected. **Global reclassification** — any allowed format under any
+allowed extension — accepts `report.pdf` holding a DOCX, and a client opens a document by its
+extension. **Families chosen in configuration** would reopen ".xlsx renamed .docx" with one line of
+JSON; the eligible families therefore live in `FileFormats`, beside the sets, for the same reason the
+signatures do — this is a security control, not a setting.
+
+So the shape is fixed: code says which families *could* be reclassified within — `images`, and
+nothing else today — and configuration says which of them *are*. Startup refuses any other entry, and
+refuses an eligible family the moment it holds a format flagged `CarriesExecutableContent`, so
+admitting a macro-capable format to `images` fails a deployment instead of quietly turning "renamed
+`.xls`" into an accepted upload.
+
+The code default is `[]`, deliberately, and not `["images"]`: the configuration binder appends to a
+pre-filled list instead of replacing it, so a default written in code could be widened by a deployment
+but never turned off. `appsettings.json` states it instead.
+
+One interaction with the setting above is worth stating, because it runs the wrong way round.
+`EnforceDeclaredMediaType` compares the client's header against the format the **extension** names,
+in `CheckName`, before any content is read. So with it on, a client that sends
+`Content-Type: image/png` for `photo.jpg` — truthful about the bytes — is refused for the mismatch and
+never reaches reclassification, while a client that sends `image/jpeg` for those same PNG bytes passes
+the name check and gets corrected to `photo.png`. Turning the flag on therefore disables this rule for
+the honest client first. That is the cost of giving any weight to a header the uploader controls, which
+is why the flag is off by default: a deployment that turns it on has chosen the declared type over the
+detected one, and should not expect a misnamed image to be corrected.
+
 ## What the content check actually catches
 
 | Attack | Caught by |
@@ -114,8 +178,12 @@ controlled client.
 | Forged `Content-Type: application/pdf` | the header is never evidence |
 | Executable renamed `notes.txt` | text has no signature, but a NUL byte contradicts it |
 | `.jar` renamed `.docx` | archive lacks `[Content_Types].xml` |
-| `.xlsx` renamed `.docx` | archive has no `word/` part |
+| `.xlsx` renamed `.docx` | archive has no `word/` part — still refused, whatever is reclassifiable |
 | Empty file | refused before anything else |
+| PNG renamed `photo.jpg` | **nothing**, where `images` is reclassifiable: accepted as a PNG, stored as `photo.png` |
+
+The last row is the one deliberate hole, and it is one family wide. Everything above it stays refused:
+reclassification never crosses a family, never passes the allowlist, and never borrows a ceiling.
 
 ## Three containers, one signature each
 
@@ -186,6 +254,12 @@ Worth stating, because a control that is trusted beyond its reach is worse than 
   rather than in the request.
 - **It does not validate structure.** A file beginning with `%PDF` and continuing with garbage is
   accepted. Full parsing is a parser's job, and parsers are themselves an attack surface.
+- **It does not rewrite what it accepts.** Reclassification corrects a *name*; the bytes are stored
+  exactly as they arrived. Content disarm and reconstruction — decoding an image and re-encoding it
+  from its pixels — is what removes a payload hidden in a JPEG's metadata, and it changes the bytes,
+  so the SHA-256, so the integrity proof every version rests on. It belongs with the scanner below,
+  and it becomes urgent before previews or OCR: both decode an image server-side, which turns the
+  decoder into the attack surface.
 - **It does not protect a browser that renders the file.** Downloads already go out as attachments
   with `X-Content-Type-Options: nosniff`, which is what makes an SVG or an HTML file inert. SVG is
   deliberately absent from the catalogue for that reason.

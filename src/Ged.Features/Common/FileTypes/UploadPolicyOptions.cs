@@ -29,6 +29,26 @@ public sealed class UploadPolicyOptions
     [MinLength(1)]
     public IList<string> AllowedFormats { get; set; } = [];
 
+    /// <summary>Gets or sets the sets within which content may be stored as what it really is.</summary>
+    /// <remarks>
+    /// <para>
+    /// A PNG the user saved as <c>photo.jpg</c> is refused by the content check, correctly: the name
+    /// contradicts the bytes. Naming a set here says that within that set the bytes win — the upload
+    /// is accepted as the format it is, and the stored name takes that format's extension.
+    /// </para>
+    /// <para>
+    /// Only a set <see cref="FileFormats.IsReclassifiable"/> admits may be named, and the allowlist
+    /// still decides: a swap never reaches a format <see cref="AllowedFormats"/> or
+    /// <see cref="FormatsByDocType"/> would have refused, and never a ceiling larger than its own.
+    /// </para>
+    /// <para>
+    /// Empty here deliberately, rather than <c>["images"]</c>. The configuration binder appends to a
+    /// pre-filled list instead of replacing it, so a default written in code could be widened by
+    /// configuration but never turned off. The shipped <c>appsettings.json</c> states it instead.
+    /// </para>
+    /// </remarks>
+    public IList<string> ReclassifiableGroups { get; set; } = [];
+
     /// <summary>Gets or sets the ceiling applied to every upload, in bytes.</summary>
     [Range(1, 4L * 1024 * 1024 * 1024)]
     public long MaxSizeBytes { get; set; } = 256L * 1024 * 1024;
