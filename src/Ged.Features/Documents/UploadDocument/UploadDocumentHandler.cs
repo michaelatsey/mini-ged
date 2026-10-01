@@ -54,7 +54,7 @@ public sealed class UploadDocumentHandler(
     /// The order of the last two steps is the point of this handler. Content is written to storage
     /// <em>before</em> the transaction opens, never inside it. Writing within the transaction would
     /// hold it open for the length of an upload, and a failed commit would leave an object nothing
-    /// in the database refers to — a fantôme no job can find.
+    /// in the database refers to — a ghost no job can find.
     /// </para>
     /// <para>
     /// Written first and committed after, a failure leaves a plain orphan instead: an object with no
