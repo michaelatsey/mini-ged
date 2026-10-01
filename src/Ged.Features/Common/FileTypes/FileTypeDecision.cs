@@ -30,11 +30,16 @@ public enum RejectionReason
 /// <param name="Format">The format the content actually is, when accepted.</param>
 /// <param name="Message">A reason the caller can show, deliberately free of internals.</param>
 /// <param name="MaxSizeBytes">The ceiling that applies to the resolved format.</param>
+/// <param name="Reclassified">
+/// Whether <see cref="Format"/> is what the content turned out to be rather than what its name
+/// claimed. True only where the policy lets the two stand in for each other.
+/// </param>
 public sealed record FileTypeDecision(
     RejectionReason Reason,
     FileFormat? Format,
     string Message,
-    long MaxSizeBytes = long.MaxValue)
+    long MaxSizeBytes = long.MaxValue,
+    bool Reclassified = false)
 {
     /// <summary>Gets a value indicating whether the upload may proceed.</summary>
     public bool Accepted => Reason == RejectionReason.None;
@@ -49,6 +54,7 @@ public sealed record FileTypeDecision(
     /// <summary>Creates an accepted decision.</summary>
     /// <param name="format">The detected format.</param>
     /// <param name="maxSizeBytes">The ceiling that applies to this format.</param>
+    /// <param name="reclassified">Whether the format came from the content rather than the name.</param>
     /// <returns>The decision.</returns>
     /// <remarks>
     /// The ceiling travels with the decision so the caller can stop reading the request body once it
@@ -56,8 +62,29 @@ public sealed record FileTypeDecision(
     /// claiming to be a CSV is written to disk in full before being refused for being 25 times over
     /// its limit — which is a cheap way to fill a server's temp volume.
     /// </remarks>
-    public static FileTypeDecision Accept(FileFormat format, long maxSizeBytes = long.MaxValue) =>
-        new(RejectionReason.None, format, "Accepted.", maxSizeBytes);
+    public static FileTypeDecision Accept(
+        FileFormat format, long maxSizeBytes = long.MaxValue, bool reclassified = false) =>
+        new(RejectionReason.None, format, "Accepted.", maxSizeBytes, reclassified);
+
+    /// <summary>The name to store, which follows the content rather than the client's claim.</summary>
+    /// <param name="fileName">The name the client supplied.</param>
+    /// <returns>
+    /// That name unchanged when nothing was reclassified, otherwise with its last extension replaced
+    /// by the accepted format's own — <c>photo.jpg</c> holding a PNG becomes <c>photo.png</c>, and a
+    /// JPEG stored under the <c>jpeg</c> format becomes <c>.jpg</c>, the first extension that format
+    /// declares.
+    /// </returns>
+    /// <remarks>
+    /// The last extension, because that is the one the inspection read: <c>invoice.pdf.exe</c> is an
+    /// executable, and correcting any other segment would leave the name saying something different
+    /// from what was checked. Correcting it at all is the point of forgiving the mismatch — a client
+    /// opens a file by its extension, so a PNG handed back as <c>.jpg</c> still opens in the wrong
+    /// application.
+    /// </remarks>
+    public string StoredNameFor(string fileName) =>
+        Reclassified && Format is not null && !string.IsNullOrWhiteSpace(fileName)
+            ? Path.ChangeExtension(fileName, Format.Extensions[0])
+            : fileName;
 
     /// <summary>Creates a refusal.</summary>
     /// <param name="reason">Why the upload was refused.</param>

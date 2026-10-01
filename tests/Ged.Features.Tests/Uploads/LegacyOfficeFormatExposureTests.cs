@@ -99,27 +99,12 @@ public sealed class LegacyOfficeFormatExposureTests
     private static string[] ReadShippedAllowlist()
     {
         using var document = JsonDocument.Parse(
-            File.ReadAllText(RepositoryFile(Path.Combine("hosts", "Ged.Api", "appsettings.json"))),
+            File.ReadAllText(Repository.FileAt(Path.Combine("hosts", "Ged.Api", "appsettings.json"))),
             new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
 
         return [.. document.RootElement
             .GetProperty("Ged").GetProperty("Uploads").GetProperty("AllowedFormats")
             .EnumerateArray()
             .Select(e => e.GetString()!)];
-    }
-
-    /// <summary>Locates a file at the repository root, walking up from the test binaries.</summary>
-    private static string RepositoryFile(string name)
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "MiniGed.slnx")))
-        {
-            directory = directory.Parent;
-        }
-
-        directory.ShouldNotBeNull("The repository root was not found above the test binaries.");
-
-        return Path.Combine(directory.FullName, name);
     }
 }

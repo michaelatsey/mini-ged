@@ -55,7 +55,10 @@ public sealed class AddDocumentVersionHandler(
             return Outcome.NotFound<AddDocumentVersionResponse>("Document");
 
         var actor = new Actor(command.By);
-        var name = new DocumentName(command.FileName);
+
+        // Validated here, stored later: the extension this version is recorded under is decided by
+        // its content, which has not been read yet.
+        var claimed = new DocumentName(command.FileName);
         var now = clock.UtcNow;
 
         // The ceiling is resolved from the extension before a byte is read, so an oversized upload
@@ -88,6 +91,10 @@ public sealed class AddDocumentVersionHandler(
             return Outcome.Fail<AddDocumentVersionResponse>(
                 "UNSUPPORTED_MEDIA_TYPE", decision.Message!);
         }
+
+        // Same rule as the first upload, because both slices go through the same inspector: a new
+        // version of a photo arriving as .jpg is recorded as the .png it is.
+        var name = new DocumentName(decision.StoredNameFor(claimed.Value));
 
         var blobId = BlobId.FromSha256(staged.Digest);
         var existing = await blobs.FindAsync(blobId, ct);

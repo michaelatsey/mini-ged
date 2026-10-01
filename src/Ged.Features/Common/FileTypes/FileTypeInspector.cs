@@ -98,9 +98,7 @@ public sealed class FileTypeInspector(
 
         if (sizeBytes > ceiling)
         {
-            return FileTypeDecision.Reject(
-                RejectionReason.TooLarge,
-                $"The file exceeds the {ceiling / (1024 * 1024)} MB limit for this type.");
+            return TooLarge(format, ceiling);
         }
 
         var detected = SafelyDetect(openContent);
@@ -125,6 +123,11 @@ public sealed class FileTypeInspector(
             return FileTypeDecision.Accept(format, ceiling);
         }
 
+        if (detected is not null && Reclassify(format, detected, header, sizeBytes, docType) is { } swapped)
+        {
+            return swapped;
+        }
+
         // The detected format is named in the message when there is one. It turns "rejected" into
         // "you sent a spreadsheet named .docx", which is the difference between a support ticket and
         // a user who fixes it themselves.
@@ -134,6 +137,112 @@ public sealed class FileTypeInspector(
 
         return FileTypeDecision.Reject(RejectionReason.ContentDoesNotMatchExtension, detail);
     }
+
+    /// <summary>Decides whether content may be accepted as the format it turned out to be.</summary>
+    /// <param name="named">The format the extension claimed.</param>
+    /// <param name="detected">What the content actually is.</param>
+    /// <param name="header">The first bytes, for the detected format's own consistency check.</param>
+    /// <param name="sizeBytes">The size actually received.</param>
+    /// <param name="docType">The document classification, or null.</param>
+    /// <returns>
+    /// An acceptance as the detected format; a <see cref="RejectionReason.TooLarge"/> refusal when the
+    /// content is over that format's own ceiling; or null when the policy does not allow the swap, in
+    /// which case the caller refuses the mismatch exactly as it always did.
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// A PNG saved as <c>photo.jpg</c> is a naming accident, and the only thing a refusal achieved was
+    /// to make the user rename the file. So inside a family the catalogue declares reclassifiable, the
+    /// bytes win and the name is corrected — which is what OWASP's file-upload guidance asks for: set
+    /// the stored extension from the detected type, checked against a defined list of image types.
+    /// </para>
+    /// <para>
+    /// Everything else stays a refusal, and the three narrowings here are why. Across families a swap
+    /// would accept a DOCX named <c>.pdf</c>, and a client opens a file by its extension. Past the
+    /// allowlist it would accept a format this request was never entitled to upload. Under another
+    /// format's ceiling it would let a 40 MB PNG in through the name of a TIFF.
+    /// </para>
+    /// <para>
+    /// The executable-content test is defence in depth rather than a fourth independent gate: no input
+    /// reaches it alone, because <see cref="FileFormats.IsReclassifiable"/> already refuses a family
+    /// holding such a format and the detected format has to be a member of one. It is written out
+    /// because it is the condition that must survive if that rule is ever relaxed to the declared list
+    /// alone — the day it becomes reachable is the day it is the only thing left.
+    /// </para>
+    /// </remarks>
+    private FileTypeDecision? Reclassify(
+        FileFormat named,
+        DetectedFormat detected,
+        ReadOnlySpan<byte> header,
+        long sizeBytes,
+        string? docType)
+    {
+        // Resolved exactly as the claimed extension was, so a swap cannot reach a format the global
+        // allowlist, or this document type's narrowing of it, would have refused.
+        if (!TryResolveByExtension(detected.Extension, docType, out var actual)
+            || actual is null
+            || actual.CarriesExecutableContent
+            || !ShareReclassifiableGroup(named, actual)
+            || (actual.Additional is not null && !actual.Additional(header, sizeBytes)))
+        {
+            return null;
+        }
+
+        var ceiling = CeilingFor(actual);
+
+        // The ceiling of what it is, never the one its name borrowed: appsettings allows a TIFF 50 MiB
+        // and a PNG 25, so a PNG named .tif is refused at 25 like any other PNG.
+        return sizeBytes > ceiling
+            ? TooLarge(actual, ceiling)
+            : FileTypeDecision.Accept(actual, ceiling, reclassified: true);
+    }
+
+    /// <summary>Determines whether two formats sit in one family a swap is allowed within.</summary>
+    /// <param name="first">The format the extension claimed.</param>
+    /// <param name="second">The format the content is.</param>
+    /// <returns>True when a configured, eligible family holds both.</returns>
+    /// <remarks>
+    /// Eligibility is re-read here and not only at startup. The configured list is validated when the
+    /// options are bound, but the code-side list and the executable-content rule are what make a
+    /// family safe, and a family that stopped being either must stop reclassifying — not keep going
+    /// because an old configuration still names it.
+    /// </remarks>
+    private bool ShareReclassifiableGroup(FileFormat first, FileFormat second)
+    {
+        foreach (var group in _policy.ReclassifiableGroups)
+        {
+            if (!FileFormats.IsReclassifiable(group))
+            {
+                continue;
+            }
+
+            var members = FileFormats.Expand(group);
+
+            if (members.Contains(first.Name, StringComparer.OrdinalIgnoreCase)
+                && members.Contains(second.Name, StringComparer.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>Refuses an upload larger than the ceiling of the format that ceiling belongs to.</summary>
+    /// <param name="format">The format whose limit applied — the claimed one, or the detected one.</param>
+    /// <param name="ceiling">The limit, in bytes.</param>
+    /// <returns>The refusal.</returns>
+    /// <remarks>
+    /// The format is named because the two callers mean different ones. Before detection the ceiling is
+    /// the claimed format's; after a reclassification it is the detected format's, and "the limit for
+    /// this type" would then point at the extension the content has just contradicted — a 25 MB limit
+    /// reported against a name ending in <c>.tif</c> reads as a bug until the message says PNG.
+    /// </remarks>
+    private static FileTypeDecision TooLarge(FileFormat format, long ceiling) =>
+        FileTypeDecision.Reject(
+            RejectionReason.TooLarge,
+            $"The file exceeds the {ceiling / (1024 * 1024)} MB limit for "
+                + $"{format.Name.ToUpperInvariant()} content.");
 
     /// <summary>Runs the detector, treating any failure as "not recognised".</summary>
     /// <param name="openContent">Opens the staged content.</param>

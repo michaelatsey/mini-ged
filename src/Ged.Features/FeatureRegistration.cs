@@ -51,6 +51,11 @@ public static class FeatureRegistration
                     .SelectMany(names => names)
                     .All(FileFormats.IsKnown),
                 "Ged:Uploads:FormatsByDocType references an unknown format.")
+            .Validate(
+                policy => policy.ReclassifiableGroups.All(FileFormats.IsReclassifiable),
+                "Ged:Uploads:ReclassifiableGroups accepts only a set this application declares "
+                    + "reclassifiable, and only while that set holds no format carrying executable "
+                    + "content. Declared: " + string.Join(", ", FileFormats.ReclassifiableGroupNames))
             .ValidateOnStart();
 
         services.AddSingleton<IFileTypeInspector, FileTypeInspector>();

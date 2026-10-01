@@ -74,7 +74,10 @@ public sealed class UploadDocumentHandler(
             return Outcome.NotFound<UploadDocumentResponse>("Folder");
 
         var actor = new Actor(command.By);
-        var name = new DocumentName(command.FileName);
+
+        // Validated here, stored later. A name carrying a path separator is refused before a byte is
+        // read; which extension it ends up with is only known once the content has been inspected.
+        var claimed = new DocumentName(command.FileName);
         var docType = new DocType(command.DocType ?? DocType.Unknown.Code);
         var now = clock.UtcNow;
 
@@ -111,6 +114,10 @@ public sealed class UploadDocumentHandler(
         }
 
         var mimeType = new MimeType(decision.MediaType);
+
+        // The name follows the content too. A PNG the client saved as photo.jpg is stored as
+        // photo.png, because the only thing that opens a document is a client reading its extension.
+        var name = new DocumentName(decision.StoredNameFor(claimed.Value));
 
         var blobId = BlobId.FromSha256(staged.Digest);
         var existing = await blobs.FindAsync(blobId, ct);

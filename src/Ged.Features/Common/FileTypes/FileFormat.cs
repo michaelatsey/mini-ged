@@ -109,11 +109,23 @@ public static class FileFormats
             ["text"] = ["txt", "csv", "json"],
         };
 
+    /// <summary>The sets within which content may be accepted under a sibling's extension.</summary>
+    /// <remarks>
+    /// In code, beside the signatures, and for the same reason: this list decides which mismatches
+    /// stop being refusals, which is a security control and not a setting. Chosen freely in
+    /// configuration it would reopen ".xlsx renamed .docx" — a case <c>docs/uploads.md</c> lists as
+    /// caught — with one line nobody reviews. Configuration may only enable what is declared here.
+    /// </remarks>
+    private static readonly string[] Reclassifiable = ["images"];
+
     /// <summary>Gets every known format.</summary>
     public static IReadOnlyList<FileFormat> Known => All;
 
     /// <summary>Gets the names of the sets configuration may use.</summary>
     public static IReadOnlyCollection<string> GroupNames => Groups.Keys;
+
+    /// <summary>Gets the sets configuration may name in <c>ReclassifiableGroups</c>.</summary>
+    public static IReadOnlyCollection<string> ReclassifiableGroupNames => Reclassifiable;
 
     /// <summary>Finds a format by its configuration name.</summary>
     /// <param name="name">The format name.</param>
@@ -129,6 +141,24 @@ public static class FileFormats
         Groups.TryGetValue(nameOrGroup, out var group) ? group
         : ByName.ContainsKey(nameOrGroup) ? [nameOrGroup]
         : [];
+
+    /// <summary>Determines whether content may be reclassified within a configured entry.</summary>
+    /// <param name="nameOrGroup">The entry to test.</param>
+    /// <returns>True when it names a set that is eligible as the catalogue stands today.</returns>
+    /// <remarks>
+    /// A format name is never eligible: reclassification is a relation between two formats, and a set
+    /// of one states no relation. A set holding a format that carries executable content is never
+    /// eligible either — accepting a macro-capable document under a second extension is exactly how a
+    /// renamed .xls reaches a client that opens files by name. That half of the rule reads
+    /// <see cref="FileFormat.CarriesExecutableContent"/> rather than the list beside it, so adding
+    /// such a format to <c>images</c> fails the startup validation instead of quietly widening what a
+    /// mismatch is allowed to become.
+    /// </remarks>
+    public static bool IsReclassifiable(string nameOrGroup) =>
+        Reclassifiable.Contains(nameOrGroup, StringComparer.OrdinalIgnoreCase)
+        && Groups.TryGetValue(nameOrGroup, out var members)
+        && members.All(name =>
+            ByName.TryGetValue(name, out var format) && !format.CarriesExecutableContent);
 
     /// <summary>Determines whether a configured entry names a format or a set.</summary>
     /// <param name="nameOrGroup">The entry to test.</param>
