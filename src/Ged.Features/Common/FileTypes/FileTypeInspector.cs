@@ -206,14 +206,16 @@ public sealed partial class FileTypeInspector(
                 : FileTypeDecision.Reject(
                     RejectionReason.NoExtension, "The file name carries no extension.");
 
-        // The stored name is computed for the log alone, so it is not computed when the level is off.
-        if (decision.Accepted && logger.IsEnabled(LogLevel.Information))
+        if (decision.Accepted)
         {
+            // A local, not an argument: CA1873 flags a method call passed to a logging method even
+            // under an IsEnabled guard. No guard either — it would save one string per bare upload,
+            // and neither a test nor the analyser could tell whether it was still there.
             var storedName = decision.StoredNameFor(fileName);
 
             LogExtensionlessAccepted(logger, fileName, decision.Format!.Name, sizeBytes, storedName, docType);
         }
-        else if (!decision.Accepted)
+        else
         {
             LogExtensionlessRefused(
                 logger, fileName, decision.Code, Stage.Content, detected?.Extension, sizeBytes, docType);

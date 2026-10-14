@@ -121,6 +121,25 @@ public sealed class ExtensionlessUploadLoggingTests
     }
 
     [Fact]
+    public void With_information_switched_off_nothing_is_logged_and_no_decision_changes()
+    {
+        // A deployment can raise this category's level. Logging must then cost the decision nothing:
+        // the same outcome, and nothing reaching the logger on any of the three paths.
+        var logger = new RecordingLogger<FileTypeInspector>(LogLevel.Warning);
+
+        var accepted = Inspect(Inspector(Policy(), Pdf, logger), "rapport", sizeBytes: 4096);
+        var refused = Inspect(Inspector(Policy(), Doc, logger), "rapport", sizeBytes: 4096);
+        var refusedByName = Inspector(Policy(allowMissingExtension: false), null, logger)
+            .CheckName("rapport", null, null);
+
+        accepted.Reason.ShouldBe(RejectionReason.None);
+        accepted.StoredNameFor("rapport").ShouldBe("rapport.pdf");
+        refused.Reason.ShouldBe(RejectionReason.ExtensionNotAllowed);
+        refusedByName.Reason.ShouldBe(RejectionReason.NoExtension);
+        logger.Entries.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task One_bare_upload_through_the_handler_leaves_exactly_one_entry()
     {
         // The handler runs the name check and then the content check on the same name; the endpoint
@@ -176,6 +195,6 @@ public sealed class ExtensionlessUploadLoggingTests
         UploadPolicyOptions policy, DetectedFormat? detected, RecordingLogger<FileTypeInspector> logger) =>
         new(new StubDetector(detected), Options.Create(policy), logger);
 
-    private static void Inspect(FileTypeInspector inspector, string fileName, long sizeBytes) =>
+    private static FileTypeDecision Inspect(FileTypeInspector inspector, string fileName, long sizeBytes) =>
         inspector.Inspect(fileName, sizeBytes, [], () => new MemoryStream([1, 2, 3]), docType: null);
 }
