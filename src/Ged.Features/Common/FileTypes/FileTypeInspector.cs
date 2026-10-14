@@ -42,8 +42,12 @@ public sealed class FileTypeInspector(
 
         if (extension.Length == 0)
         {
-            return FileTypeDecision.Reject(
-                RejectionReason.NoExtension, "The file name carries no extension.");
+            // Nothing claimed, so nothing to refuse cheaply and no per-format ceiling to bound the
+            // staging with: the content will decide, and the global ceiling stops the copy until then.
+            return MayIdentifyByContent
+                ? FileTypeDecision.Undetermined(_policy.MaxSizeBytes)
+                : FileTypeDecision.Reject(
+                    RejectionReason.NoExtension, "The file name carries no extension.");
         }
 
         if (!TryResolveByExtension(extension, docType, out var format) || format is null)
@@ -86,6 +90,14 @@ public sealed class FileTypeInspector(
         }
 
         var extension = ExtensionOf(fileName);
+
+        if (extension.Length == 0)
+        {
+            return MayIdentifyByContent
+                ? IdentifyByContent(sizeBytes, header, openContent, docType)
+                : FileTypeDecision.Reject(
+                    RejectionReason.NoExtension, "The file name carries no extension.");
+        }
 
         if (!TryResolveByExtension(extension, docType, out var format) || format is null)
         {
@@ -136,6 +148,82 @@ public sealed class FileTypeInspector(
             : $"The content is a {detected.Extension.ToUpperInvariant()} file, not a {format.Name.ToUpperInvariant()}.";
 
         return FileTypeDecision.Reject(RejectionReason.ContentDoesNotMatchExtension, detail);
+    }
+
+    /// <summary>Gets a value indicating whether a name with no extension may be decided by its content.</summary>
+    /// <remarks>
+    /// Both gates read this one property, so a caller reaching <see cref="Inspect"/> without
+    /// <see cref="CheckName"/> meets the same rule. <see cref="UploadPolicyOptions.EnforceDeclaredMediaType"/>
+    /// turns it off because its comparison needs the format an extension names; with none, the gate a
+    /// deployment chose would be skipped by leaving the extension out.
+    /// </remarks>
+    private bool MayIdentifyByContent =>
+        _policy.AllowMissingExtension && !_policy.EnforceDeclaredMediaType;
+
+    /// <summary>Decides on content whose name claims no format at all.</summary>
+    /// <param name="sizeBytes">The size actually received.</param>
+    /// <param name="header">The first bytes, for the detected format's own consistency check.</param>
+    /// <param name="openContent">Opens the staged content for the detector.</param>
+    /// <param name="docType">The document classification, or null.</param>
+    /// <returns>
+    /// An acceptance as the detected format, flagged so the stored name takes its extension; or a
+    /// refusal.
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// The same narrowings as <see cref="Reclassify"/>, minus the family: there is no claimed format
+    /// for the detected one to belong with. The allowlist and the document type's narrowing of it
+    /// resolve the detected format exactly as they would an extension, so leaving the extension out is
+    /// never a way to a format this request could not have named. That is also the only gate on a
+    /// format flagged <see cref="FileFormat.CarriesExecutableContent"/>, as it is for a named upload.
+    /// </para>
+    /// <para>
+    /// Content the detector cannot place is refused as <see cref="RejectionReason.NoExtension"/>:
+    /// without a name, nothing else identifies it. That covers every text format — a signature-less
+    /// format is only ever confirmed by the name it arrives under — and a format whose own header
+    /// check fails, since two ASCII letters are no evidence of a bitmap.
+    /// </para>
+    /// <para>
+    /// The ceiling is the detected format's. The body was staged against the global one, because no
+    /// other was known before it was read; this is where the tighter limit catches up.
+    /// </para>
+    /// </remarks>
+    private FileTypeDecision IdentifyByContent(
+        long sizeBytes,
+        ReadOnlySpan<byte> header,
+        Func<Stream> openContent,
+        string? docType)
+    {
+        var detected = SafelyDetect(openContent);
+
+        if (detected is null)
+        {
+            return Unidentified();
+        }
+
+        if (!TryResolveByExtension(detected.Extension, docType, out var format) || format is null)
+        {
+            return FileTypeDecision.Reject(
+                RejectionReason.ExtensionNotAllowed,
+                $"The content is a {detected.Extension.ToUpperInvariant()} file, which is not accepted here.");
+        }
+
+        if (format.Mode == DetectionMode.TextHeuristic
+            || (format.Additional is not null && !format.Additional(header, sizeBytes)))
+        {
+            return Unidentified();
+        }
+
+        var ceiling = CeilingFor(format);
+
+        return sizeBytes > ceiling
+            ? TooLarge(format, ceiling)
+            : FileTypeDecision.Accept(format, ceiling, reclassified: true);
+
+        static FileTypeDecision Unidentified() =>
+            FileTypeDecision.Reject(
+                RejectionReason.NoExtension,
+                "The file name carries no extension, and its content does not identify an accepted format.");
     }
 
     /// <summary>Decides whether content may be accepted as the format it turned out to be.</summary>
