@@ -10,8 +10,8 @@ using Microsoft.Extensions.Options;
 namespace Ged.Features.Tests.Uploads;
 
 /// <summary>
-/// Every upload whose name carries no extension leaves exactly one log entry, accepted or refused,
-/// and nothing else does.
+/// Every upload with no extension that the inspector decides on leaves exactly one log entry,
+/// accepted or refused, and nothing else does.
 /// </summary>
 /// <remarks>
 /// <para>
