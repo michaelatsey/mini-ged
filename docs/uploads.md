@@ -42,7 +42,8 @@ format
     "MaxSizeBytes": 268435456,
     "MaxSizeByFormat": { "csv": 10485760, "png": 26214400, "tiff": 52428800 },
     "FormatsByDocType": { "CONTRACT": [ "pdf" ], "INVOICE": [ "pdf", "xlsx" ] },
-    "EnforceDeclaredMediaType": false
+    "EnforceDeclaredMediaType": false,
+    "AllowMissingExtension": false
   }
 }
 ```
@@ -169,6 +170,50 @@ the honest client first. That is the cost of giving any weight to a header the u
 is why the flag is off by default: a deployment that turns it on has chosen the declared type over the
 detected one, and should not expect a misnamed image to be corrected.
 
+### A name with no extension
+
+Scanners, mobile share sheets and some legacy clients send `rapport` rather than `rapport.pdf`. That
+is refused as `NoExtension` unless the deployment says otherwise:
+
+```json
+"AllowMissingExtension": true
+```
+
+A name with no extension claims nothing, so unlike `photo.jpg` it contradicts nothing — the argument
+that rejected global reclassification, a client opening a file by an extension that lies, has no
+extension to apply to. The content decides, and the stored name takes the detected format's
+extension: `rapport` becomes `rapport.pdf`, and so does `rapport.`. A file with no extension opens in
+nothing, so leaving it unnamed would only move the problem to the download.
+
+What still applies is everything that applies to a named upload:
+
+| | |
+|---|---|
+| still allowed | the detected format resolves through `AllowedFormats` and `FormatsByDocType` — refused as `ExtensionNotAllowed` otherwise |
+| internally consistent | the detected format's own header check passes — BMP has one |
+| its own ceiling | the size is within the **detected** format's limit |
+
+The allowlist is the only gate on a format flagged `CarriesExecutableContent`, exactly as for a named
+upload: a deployment that does not list `doc` does not receive one by leaving the name bare.
+
+Three things are refused even with the flag on, all as `NoExtension`:
+
+- **Text.** `txt`, `csv` and `json` carry no signature, so a signature-less format is only ever
+  confirmed by the name it arrives under. Without one, picking a format would decide which document
+  types may receive the file and which media type is recorded for it.
+- **Content the detector cannot place**, and content failing its own format's header check.
+- **Any bare name where `EnforceDeclaredMediaType` is on.** That check compares the header with the
+  format the extension names, in `CheckName`, before the body is read. With no extension there is
+  nothing to compare with, and a deployment that chose the header as a gate must not see it skipped by
+  an upload that leaves the extension out.
+
+The cost is the cheap refusal. With no claimed format there is no per-format ceiling before the body
+is read, so the staging is bounded by `MaxSizeBytes`, and the detected format's ceiling applies after
+detection: a 200 MB CSV-like upload with no name is written to the temp volume before being refused,
+where `data.csv` would have stopped at 10 MiB. The transport admits `MaxSizeBytes` already, so the
+`/tmp` arithmetic in `docs/containers.md` does not move — what moves is when the refusal happens.
+That is why the flag is off by default.
+
 ## What the content check actually catches
 
 | Attack | Caught by |
@@ -181,9 +226,13 @@ detected one, and should not expect a misnamed image to be corrected.
 | `.xlsx` renamed `.docx` | archive has no `word/` part — still refused, whatever is reclassifiable |
 | Empty file | refused before anything else |
 | PNG renamed `photo.jpg` | **nothing**, where `images` is reclassifiable: accepted as a PNG, stored as `photo.png` |
+| PDF named `rapport` | **nothing**, where `AllowMissingExtension` is on: accepted as a PDF, stored as `rapport.pdf` |
+| Text named `notes` | refused — with no signature and no name, nothing identifies it |
 
-The last row is the one deliberate hole, and it is one family wide. Everything above it stays refused:
-reclassification never crosses a family, never passes the allowlist, and never borrows a ceiling.
+The PNG row is the one deliberate hole, and it is one family wide. Everything above it stays refused:
+reclassification never crosses a family, never passes the allowlist, and never borrows a ceiling. The
+`rapport` row is not a hole in the same sense — a bare name makes no claim for the content to
+contradict — and it passes through the same allowlist and the same ceilings.
 
 ## Three containers, one signature each
 

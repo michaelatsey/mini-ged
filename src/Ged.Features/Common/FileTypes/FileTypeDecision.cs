@@ -12,10 +12,16 @@ public enum RejectionReason
     /// <summary>The file is larger than the ceiling for its format.</summary>
     TooLarge,
 
-    /// <summary>The name carries no extension, so nothing declares what it claims to be.</summary>
+    /// <summary>
+    /// The name carries no extension, and either the policy does not accept that or the content alone
+    /// does not identify an accepted format.
+    /// </summary>
     NoExtension,
 
-    /// <summary>The extension is not in the allowlist for this environment or document type.</summary>
+    /// <summary>
+    /// The format is not in the allowlist for this environment or document type — named by the
+    /// extension, or detected from the content when the name has none.
+    /// </summary>
     ExtensionNotAllowed,
 
     /// <summary>The client's declared media type contradicts its own extension.</summary>
@@ -31,8 +37,8 @@ public enum RejectionReason
 /// <param name="Message">A reason the caller can show, deliberately free of internals.</param>
 /// <param name="MaxSizeBytes">The ceiling that applies to the resolved format.</param>
 /// <param name="Reclassified">
-/// Whether <see cref="Format"/> is what the content turned out to be rather than what its name
-/// claimed. True only where the policy lets the two stand in for each other.
+/// Whether <see cref="Format"/> comes from the content rather than from the name — because the policy
+/// lets the two stand in for each other, or because the name claimed nothing at all.
 /// </param>
 public sealed record FileTypeDecision(
     RejectionReason Reason,
@@ -66,13 +72,26 @@ public sealed record FileTypeDecision(
         FileFormat format, long maxSizeBytes = long.MaxValue, bool reclassified = false) =>
         new(RejectionReason.None, format, "Accepted.", maxSizeBytes, reclassified);
 
+    /// <summary>Creates a decision that lets the upload be staged before its format is known.</summary>
+    /// <param name="maxSizeBytes">The ceiling the staging stops at — the global one.</param>
+    /// <returns>An accepted decision carrying no format.</returns>
+    /// <remarks>
+    /// The name check's answer to a name with no extension, where the policy allows one. Nothing has
+    /// been claimed, so nothing can be refused cheaply and no per-format ceiling is known: the content
+    /// check decides, and applies the detected format's ceiling then. It is never a decision to store
+    /// anything — <see cref="Format"/> is null, which is why only the name check returns it.
+    /// </remarks>
+    public static FileTypeDecision Undetermined(long maxSizeBytes) =>
+        new(RejectionReason.None, null, "Accepted pending its content.", maxSizeBytes);
+
     /// <summary>The name to store, which follows the content rather than the client's claim.</summary>
     /// <param name="fileName">The name the client supplied.</param>
     /// <returns>
-    /// That name unchanged when nothing was reclassified, otherwise with its last extension replaced
-    /// by the accepted format's own — <c>photo.jpg</c> holding a PNG becomes <c>photo.png</c>, and a
-    /// JPEG stored under the <c>jpeg</c> format becomes <c>.jpg</c>, the first extension that format
-    /// declares.
+    /// That name unchanged when the format came from the name, otherwise with its last extension
+    /// replaced by the accepted format's own — <c>photo.jpg</c> holding a PNG becomes
+    /// <c>photo.png</c>, and a JPEG stored under the <c>jpeg</c> format becomes <c>.jpg</c>, the first
+    /// extension that format declares. A name with no extension gets one: <c>rapport</c> becomes
+    /// <c>rapport.pdf</c>, and so does <c>rapport.</c>.
     /// </returns>
     /// <remarks>
     /// The last extension, because that is the one the inspection read: <c>invoice.pdf.exe</c> is an

@@ -95,4 +95,29 @@ public sealed class UploadPolicyOptions
     /// header entirely. Enable it only for a known, controlled client.
     /// </remarks>
     public bool EnforceDeclaredMediaType { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether a file name with no extension is accepted.</summary>
+    /// <remarks>
+    /// <para>
+    /// Scanners, mobile share sheets and some legacy clients send <c>rapport</c> rather than
+    /// <c>rapport.pdf</c>. A name with no extension claims nothing, so it contradicts nothing: when
+    /// this is on, the content decides, under the same allowlist, document-type narrowing and
+    /// per-format ceilings as any other upload, and the stored name takes the detected format's
+    /// extension — a client opens a file by its extension, and one with none opens in nothing.
+    /// </para>
+    /// <para>
+    /// Off by default, and stated off in the shipped configuration, because it costs the cheap
+    /// refusal: with no claimed format, the body is staged up to <see cref="MaxSizeBytes"/> before
+    /// the format's own ceiling can apply.
+    /// </para>
+    /// <para>
+    /// Text is refused even when this is on. <c>txt</c>, <c>csv</c> and <c>json</c> carry no
+    /// signature, so without a name nothing tells them apart, and choosing one would decide which
+    /// document types may receive the file and which media type is recorded for it. And a name with
+    /// no extension is refused whenever <see cref="EnforceDeclaredMediaType"/> is on: that check
+    /// compares the client's header with the format the extension names, and a deployment that chose
+    /// it as a gate must not see it skipped by an upload that simply leaves the extension out.
+    /// </para>
+    /// </remarks>
+    public bool AllowMissingExtension { get; set; }
 }
