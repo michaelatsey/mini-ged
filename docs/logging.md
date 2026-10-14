@@ -48,8 +48,10 @@ and the generator keeps a template and its arguments in step where a `params` ar
 
 - **Every argument appears in the template.** One that does not is a generator warning, which is an
   error in Release.
-- **An argument that costs something is computed under `logger.IsEnabled(level)`.** CA1873 checks it,
-  and only recognises a guard that encloses the call.
+- **A method call is never passed as an argument; compute it into a local first.** CA1873 flags it,
+  and in this repository it does so even under a `logger.IsEnabled` guard enclosing the call — the
+  guard does not satisfy it. Add a guard only where the cost is real: a guard that no test and no
+  analyser can see is a guard nobody will notice going missing.
 - **Event ids are stable and allocated by range.** They are what a filter or a dashboard keys on; the
   JSON formatter writes the number, not the `EventName`.
 
