@@ -7,6 +7,7 @@ using Ged.Features.Common.FileTypes;
 using Ged.Features.Documents.AddDocumentVersion;
 using Ged.Features.Documents.UploadDocument;
 using Ged.Features.Tests.Fakes;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 namespace Ged.Features.Tests.Uploads;
@@ -285,7 +286,7 @@ public sealed class ExtensionlessUploadTests
 
     private static FileTypeDecision CheckName(
         UploadPolicyOptions policy, string fileName, string? declaredMediaType = null) =>
-        new FileTypeInspector(new StubDetector(null), Options.Create(policy))
+        new FileTypeInspector(new StubDetector(null), Options.Create(policy), NullLogger<FileTypeInspector>.Instance)
             .CheckName(fileName, declaredMediaType, docType: null);
 
     private static FileTypeDecision Inspect(
@@ -295,11 +296,12 @@ public sealed class ExtensionlessUploadTests
         long sizeBytes = 4096,
         string? docType = null,
         byte[]? header = null) =>
-        new FileTypeInspector(new StubDetector(detected), Options.Create(policy)).Inspect(
+        new FileTypeInspector(new StubDetector(detected), Options.Create(policy), NullLogger<FileTypeInspector>.Instance).Inspect(
             fileName, sizeBytes, header ?? [], () => new MemoryStream([1, 2, 3]), docType);
 
     /// <summary>The real inspector, detecting a PDF, with extensionless uploads on.</summary>
     private static FileTypeInspector Inspector() => new(
         new StubDetector(Pdf),
-        Options.Create(new UploadPolicyOptions { AllowedFormats = ["pdf"], AllowMissingExtension = true }));
+        Options.Create(new UploadPolicyOptions { AllowedFormats = ["pdf"], AllowMissingExtension = true }),
+        NullLogger<FileTypeInspector>.Instance);
 }

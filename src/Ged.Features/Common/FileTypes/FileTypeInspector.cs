@@ -1,5 +1,6 @@
 using System.Text;
 using Ged.Core.Ports.FileTypes;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Ged.Features.Common.FileTypes;
@@ -7,6 +8,7 @@ namespace Ged.Features.Common.FileTypes;
 /// <summary>Applies the upload policy to a file name and then to its content.</summary>
 /// <param name="detector">Identifies what the content actually is.</param>
 /// <param name="options">The configured policy.</param>
+/// <param name="logger">Records every upload whose name carries no extension, and what became of it.</param>
 /// <remarks>
 /// <para>
 /// Three layers, in increasing order of cost and of authority:
@@ -26,9 +28,10 @@ namespace Ged.Features.Common.FileTypes;
 /// library can hold at all. This class keeps the second half and only the second half.
 /// </para>
 /// </remarks>
-public sealed class FileTypeInspector(
+public sealed partial class FileTypeInspector(
     IContentFormatDetector detector,
-    IOptions<UploadPolicyOptions> options) : IFileTypeInspector
+    IOptions<UploadPolicyOptions> options,
+    ILogger<FileTypeInspector> logger) : IFileTypeInspector
 {
     /// <summary>How many leading bytes are captured for the weak-signature checks.</summary>
     public const int HeaderLength = 512;
@@ -44,10 +47,20 @@ public sealed class FileTypeInspector(
         {
             // Nothing claimed, so nothing to refuse cheaply and no per-format ceiling to bound the
             // staging with: the content will decide, and the global ceiling stops the copy until then.
-            return MayIdentifyByContent
-                ? FileTypeDecision.Undetermined(_policy.MaxSizeBytes)
-                : FileTypeDecision.Reject(
-                    RejectionReason.NoExtension, "The file name carries no extension.");
+            // Only the refusal is logged here: an accepted name is logged once, by Inspect, when the
+            // content has decided — and this check runs twice per request, at the endpoint and again
+            // in the handler.
+            if (MayIdentifyByContent)
+            {
+                return FileTypeDecision.Undetermined(_policy.MaxSizeBytes);
+            }
+
+            var refused = FileTypeDecision.Reject(
+                RejectionReason.NoExtension, "The file name carries no extension.");
+
+            LogExtensionlessRefused(logger, fileName, refused.Code, Stage.Name, detectedFormat: null, sizeBytes: null, docType);
+
+            return refused;
         }
 
         if (!TryResolveByExtension(extension, docType, out var format) || format is null)
@@ -84,19 +97,16 @@ public sealed class FileTypeInspector(
     {
         ArgumentNullException.ThrowIfNull(openContent);
 
-        if (sizeBytes <= 0)
-        {
-            return FileTypeDecision.Reject(RejectionReason.Empty, "The file is empty.");
-        }
-
         var extension = ExtensionOf(fileName);
 
         if (extension.Length == 0)
         {
-            return MayIdentifyByContent
-                ? IdentifyByContent(sizeBytes, header, openContent, docType)
-                : FileTypeDecision.Reject(
-                    RejectionReason.NoExtension, "The file name carries no extension.");
+            return InspectExtensionless(fileName, sizeBytes, header, openContent, docType);
+        }
+
+        if (sizeBytes <= 0)
+        {
+            return FileTypeDecision.Reject(RejectionReason.Empty, "The file is empty.");
         }
 
         if (!TryResolveByExtension(extension, docType, out var format) || format is null)
@@ -160,11 +170,63 @@ public sealed class FileTypeInspector(
     private bool MayIdentifyByContent =>
         _policy.AllowMissingExtension && !_policy.EnforceDeclaredMediaType;
 
+    /// <summary>The content check for a name with no extension, and the one place it is logged.</summary>
+    /// <param name="fileName">The name the client supplied, logged as it arrived.</param>
+    /// <param name="sizeBytes">The size actually received.</param>
+    /// <param name="header">The first bytes of the content.</param>
+    /// <param name="openContent">Opens the staged content.</param>
+    /// <param name="docType">The document classification, or null.</param>
+    /// <returns>The decision.</returns>
+    /// <remarks>
+    /// <para>
+    /// Every outcome goes through the one log call at the end, so an extensionless upload that reaches
+    /// the content check produces exactly one entry, whichever branch decided it. An upload that never
+    /// gets here was refused by <see cref="CheckName"/>, which logs that refusal itself.
+    /// </para>
+    /// <para>
+    /// The empty-file check is repeated here rather than run before the extension is read, because an
+    /// empty file with no name is still an extensionless arrival, and the log is what says how many
+    /// of those there are.
+    /// </para>
+    /// </remarks>
+    private FileTypeDecision InspectExtensionless(
+        string fileName,
+        long sizeBytes,
+        ReadOnlySpan<byte> header,
+        Func<Stream> openContent,
+        string? docType)
+    {
+        DetectedFormat? detected = null;
+
+        var decision = sizeBytes <= 0
+            ? FileTypeDecision.Reject(RejectionReason.Empty, "The file is empty.")
+            : MayIdentifyByContent
+                ? IdentifyByContent(sizeBytes, header, openContent, docType, out detected)
+                : FileTypeDecision.Reject(
+                    RejectionReason.NoExtension, "The file name carries no extension.");
+
+        // The stored name is computed for the log alone, so it is not computed when the level is off.
+        if (decision.Accepted && logger.IsEnabled(LogLevel.Information))
+        {
+            var storedName = decision.StoredNameFor(fileName);
+
+            LogExtensionlessAccepted(logger, fileName, decision.Format!.Name, sizeBytes, storedName, docType);
+        }
+        else if (!decision.Accepted)
+        {
+            LogExtensionlessRefused(
+                logger, fileName, decision.Code, Stage.Content, detected?.Extension, sizeBytes, docType);
+        }
+
+        return decision;
+    }
+
     /// <summary>Decides on content whose name claims no format at all.</summary>
     /// <param name="sizeBytes">The size actually received.</param>
     /// <param name="header">The first bytes, for the detected format's own consistency check.</param>
     /// <param name="openContent">Opens the staged content for the detector.</param>
     /// <param name="docType">The document classification, or null.</param>
+    /// <param name="detected">What the detector reported, or null — for the log, refusals included.</param>
     /// <returns>
     /// An acceptance as the detected format, flagged so the stored name takes its extension; or a
     /// refusal.
@@ -192,9 +254,10 @@ public sealed class FileTypeInspector(
         long sizeBytes,
         ReadOnlySpan<byte> header,
         Func<Stream> openContent,
-        string? docType)
+        string? docType,
+        out DetectedFormat? detected)
     {
-        var detected = SafelyDetect(openContent);
+        detected = SafelyDetect(openContent);
 
         if (detected is null)
         {
@@ -224,6 +287,53 @@ public sealed class FileTypeInspector(
             FileTypeDecision.Reject(
                 RejectionReason.NoExtension,
                 "The file name carries no extension, and its content does not identify an accepted format.");
+    }
+
+    // Source-generated, as CA1848 asks: no boxing into an object[], nothing formatted when the level
+    // is off, and a template the compiler keeps in step with its arguments. The event ids are stable
+    // on purpose — they are what a filter or a dashboard keys on once these logs leave the console.
+    // The file name goes out as the client sent it: it is the one field that says which client
+    // produces bare names. The JSON console formatter escapes it, so a name carrying a line break
+    // cannot forge a second entry.
+    [LoggerMessage(
+        EventId = 2001,
+        EventName = "ExtensionlessUploadAccepted",
+        Level = LogLevel.Information,
+        Message = "Upload {FileName} has no extension; accepted as {Format} ({SizeBytes} bytes, "
+            + "document type {DocType}), stored as {StoredName}.")]
+    private static partial void LogExtensionlessAccepted(
+        ILogger logger,
+        string fileName,
+        string format,
+        long sizeBytes,
+        string storedName,
+        string? docType);
+
+    [LoggerMessage(
+        EventId = 2002,
+        EventName = "ExtensionlessUploadRefused",
+        Level = LogLevel.Information,
+        Message = "Upload {FileName} has no extension; refused as {Reason} at the {Stage} check "
+            + "(detected {DetectedFormat}, {SizeBytes} bytes, document type {DocType}).")]
+    private static partial void LogExtensionlessRefused(
+        ILogger logger,
+        string fileName,
+        string reason,
+        string stage,
+        string? detectedFormat,
+        long? sizeBytes,
+        string? docType);
+
+    /// <summary>Which check refused an extensionless upload, as the log records it.</summary>
+    /// <remarks>
+    /// The name check refuses before a byte is read, so its entries carry no size and no detected
+    /// format; telling the two apart is what makes those empty fields readable.
+    /// </remarks>
+    private static class Stage
+    {
+        public const string Name = "name";
+
+        public const string Content = "content";
     }
 
     /// <summary>Decides whether content may be accepted as the format it turned out to be.</summary>
