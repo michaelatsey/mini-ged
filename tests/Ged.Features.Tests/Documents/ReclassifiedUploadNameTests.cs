@@ -5,6 +5,7 @@ using Ged.Features.Common.FileTypes;
 using Ged.Features.Documents.AddDocumentVersion;
 using Ged.Features.Documents.UploadDocument;
 using Ged.Features.Tests.Fakes;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 namespace Ged.Features.Tests.Documents;
@@ -106,5 +107,6 @@ public sealed class ReclassifiedUploadNameTests
         {
             AllowedFormats = ["jpeg", "png"],
             ReclassifiableGroups = ["images"],
-        }));
+        }),
+        NullLogger<FileTypeInspector>.Instance);
 }

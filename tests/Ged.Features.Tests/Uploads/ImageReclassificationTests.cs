@@ -4,6 +4,7 @@ using Ged.Features.Common.FileTypes;
 using Ged.Features.Tests.Fakes;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 namespace Ged.Features.Tests.Uploads;
@@ -257,7 +258,7 @@ public sealed class ImageReclassificationTests
         long sizeBytes = 4096,
         string? docType = null,
         byte[]? header = null) =>
-        new FileTypeInspector(new StubDetector(detected), Options.Create(policy)).Inspect(
+        new FileTypeInspector(new StubDetector(detected), Options.Create(policy), NullLogger<FileTypeInspector>.Instance).Inspect(
             fileName, sizeBytes, header ?? [], () => new MemoryStream([1, 2, 3]), docType);
 
     /// <summary>Binds the policy the way the host does, which is where the validation lives.</summary>
