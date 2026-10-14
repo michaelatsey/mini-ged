@@ -58,7 +58,8 @@ public sealed partial class FileTypeInspector(
             var refused = FileTypeDecision.Reject(
                 RejectionReason.NoExtension, "The file name carries no extension.");
 
-            LogExtensionlessRefused(logger, fileName, refused.Code, Stage.Name, detectedFormat: null, sizeBytes: null, docType);
+            LogExtensionlessRefused(
+                logger, fileName, refused.Code, Stage.Name, detectedFormat: null, sizeBytes: null, docType);
 
             return refused;
         }

@@ -68,10 +68,22 @@ rendered message — the same rule as asserting on a rule's type rather than its
 | 2001 | `ExtensionlessUploadAccepted` | Information | `FileName`, `Format`, `SizeBytes`, `StoredName`, `DocType` |
 | 2002 | `ExtensionlessUploadRefused` | Information | `FileName`, `Reason`, `Stage`, `DetectedFormat`, `SizeBytes`, `DocType` |
 
-One entry per upload whose name carries no extension, whatever became of it, and none for any other
-upload. They are the evidence for keeping `AllowMissingExtension` on or off: how often bare names
-arrive, and what they turn out to be. `Stage` is `name` when the refusal came before a byte was read
-— which is why such entries carry no size and no detected format — and `content` otherwise.
+One entry for each upload with no extension that the inspector decides on, whatever it decided, and
+none for any other upload. They are the evidence for keeping `AllowMissingExtension` on or off: how
+often bare names arrive, and what they turn out to be. `Stage` is `name` when the refusal came before
+a byte was read — which is why such entries carry no size and no detected format — and `content`
+otherwise.
+
+Two bare uploads are refused before the inspector decides, and leave no entry. A count built on these
+logs is a count of decisions, not of arrivals:
+
+| Refused by | Response | When |
+|---|---|---|
+| `DocumentName`, in the handler | 400 | the name holds a path separator or a control character |
+| the staging, in the handler | 415 | the body exceeds `MaxSizeBytes` — reachable only within the mebibyte the transport admits above it |
+
+With `AllowMissingExtension` off neither gap applies: the endpoint's name check refuses, and logs,
+before the handler runs.
 
 Both are `Information`. A refused file is a client's outcome, not an operational fault, and a
 `Warning` that fires on every misnamed upload trains everyone to ignore warnings.
@@ -87,6 +99,10 @@ consequences, both deliberate:
 - **Personal data.** A name like `bulletin-salaire-dupont` is personal data, so the log inherits the
   retention duty the document has. Whatever collects these logs later needs a retention period set
   for that, not the default "keep forever".
+- **Length.** A refusal at the name check is logged before `DocumentName` validates the name, so its
+  255-character limit has not applied yet: the entry is bounded by the multipart header limit
+  instead, and by the rate limiter per identity. Not truncated, on purpose — a truncated name is a
+  different name.
 
 ## Not covered yet
 
