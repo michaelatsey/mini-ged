@@ -98,8 +98,9 @@ public sealed class UploadPolicyOptions
     /// </para>
     /// <para>
     /// When on, a declared type is a claim, compared with the format the content is finally accepted
-    /// as — named, reclassified, or identified from a bare name. A claim the bytes contradict, or one
-    /// naming no catalogue format, is refused. An absent or blank type, or
+    /// as — named, reclassified, or identified from a bare name — and corrected within a family enabled
+    /// in <see cref="ReclassifiableGroups"/>, as the extension is. A claim the bytes contradict across
+    /// families, or one naming no catalogue format, is refused. An absent or blank type, or
     /// <c>application/octet-stream</c>, claims nothing and is never refused: a claim made must be
     /// true, but no claim has to be made.
     /// </para>
