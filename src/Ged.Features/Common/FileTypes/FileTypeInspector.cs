@@ -8,7 +8,10 @@ namespace Ged.Features.Common.FileTypes;
 /// <summary>Applies the upload policy to a file name and then to its content.</summary>
 /// <param name="detector">Identifies what the content actually is.</param>
 /// <param name="options">The configured policy.</param>
-/// <param name="logger">Records every upload whose name carries no extension, and what became of it.</param>
+/// <param name="logger">
+/// Records every upload whose name carries no extension and what became of it, and every declared media
+/// type that disagrees with the file.
+/// </param>
 /// <remarks>
 /// <para>
 /// Three layers, in increasing order of cost and of authority:
@@ -64,6 +67,11 @@ public sealed partial class FileTypeInspector(
             LogExtensionlessRefused(
                 logger, fileName, refused.Code, Stage.Name, detectedFormat: null, sizeBytes: null, docType);
 
+            if (refused.Reason == RejectionReason.DeclaredMediaTypeMismatch && claimed is { } outside)
+            {
+                RecordRefusedClaim(fileName, outside, comparedWith: null, docType);
+            }
+
             return refused;
         }
 
@@ -76,6 +84,8 @@ public sealed partial class FileTypeInspector(
 
         if (claimed is { } claim && !MayStillAgree(claim, format))
         {
+            RecordRefusedClaim(fileName, claim, format, docType);
+
             return claim.Format is null
                 ? DeclaredOutsideCatalogue()
                 : FileTypeDecision.Reject(
@@ -106,7 +116,8 @@ public sealed partial class FileTypeInspector(
             return InspectExtensionless(fileName, declaredMediaType, sizeBytes, header, openContent, docType);
         }
 
-        return Confirm(InspectNamed(extension, sizeBytes, header, openContent, docType), declaredMediaType);
+        return ConfirmAndRecord(
+            fileName, InspectNamed(extension, sizeBytes, header, openContent, docType), declaredMediaType, docType);
     }
 
     /// <summary>The content check for a name carrying an extension.</summary>
@@ -191,10 +202,20 @@ public sealed partial class FileTypeInspector(
 
     /// <summary>Reads the client's declared media type as a claim, when the policy holds clients to one.</summary>
     /// <param name="declaredMediaType">The value the client sent. Untrusted.</param>
+    /// <returns>The claim <see cref="ReadClaim"/> reads, or null when the flag is off.</returns>
+    /// <remarks>
+    /// What the decisions act on. The log reads the claim with <see cref="ReadClaim"/> directly, so a
+    /// mislabel is recorded whether or not the policy acts on it.
+    /// </remarks>
+    private Claim? ClaimOf(string? declaredMediaType) =>
+        _policy.EnforceDeclaredMediaType ? ReadClaim(declaredMediaType) : null;
+
+    /// <summary>Reads a declared media type as a claim, whatever the policy does with it.</summary>
+    /// <param name="declaredMediaType">The value the client sent. Untrusted.</param>
     /// <returns>
-    /// Null when nothing is claimed — the flag is off, or the value is absent, blank or
-    /// <c>application/octet-stream</c>. Otherwise the claim, carrying the catalogue format it names, or
-    /// a null format when it names none.
+    /// Null when nothing is claimed — the value is absent, blank or <c>application/octet-stream</c>.
+    /// Otherwise the claim: the media type as compared, and the catalogue format it names, or a null
+    /// format when it names none.
     /// </returns>
     /// <remarks>
     /// <para>
@@ -210,9 +231,9 @@ public sealed partial class FileTypeInspector(
     /// second name under which a claim agrees with content, and the catalogue holds none.
     /// </para>
     /// </remarks>
-    private Claim? ClaimOf(string? declaredMediaType)
+    private static Claim? ReadClaim(string? declaredMediaType)
     {
-        if (!_policy.EnforceDeclaredMediaType || string.IsNullOrWhiteSpace(declaredMediaType))
+        if (string.IsNullOrWhiteSpace(declaredMediaType))
         {
             return null;
         }
@@ -225,7 +246,7 @@ public sealed partial class FileTypeInspector(
             return null;
         }
 
-        return new Claim(FileFormats.TryGetByMediaType(mediaType, out var format) ? format : null);
+        return new Claim(mediaType, FileFormats.TryGetByMediaType(mediaType, out var format) ? format : null);
     }
 
     /// <summary>Determines whether a claim may still agree with the content once it is read.</summary>
@@ -314,8 +335,82 @@ public sealed partial class FileTypeInspector(
     private const string UnknownMediaType = "application/octet-stream";
 
     /// <summary>A media type the client declared, read against the catalogue.</summary>
+    /// <param name="MediaType">The media type as compared: parameters dropped, trimmed.</param>
     /// <param name="Format">The format it names, or null when it names none the catalogue knows.</param>
-    private readonly record struct Claim(FileFormat? Format);
+    private readonly record struct Claim(string MediaType, FileFormat? Format);
+
+    /// <summary>Applies <see cref="Confirm"/>, and records a claim that disagrees with the content.</summary>
+    /// <param name="fileName">The name the client supplied, logged as it arrived.</param>
+    /// <param name="inspected">The content check's decision, before any claim is compared with it.</param>
+    /// <param name="declaredMediaType">What the client declared.</param>
+    /// <param name="docType">The document classification, or null.</param>
+    /// <returns>The decision <see cref="Confirm"/> returns.</returns>
+    /// <remarks>
+    /// <para>
+    /// Recorded whenever the content was accepted as a format the claim does not name, whatever
+    /// <see cref="Confirm"/> then makes of it: forgiven within a family, refused across one, or not
+    /// looked at because the flag is off. The record exists to measure mislabelling before deciding
+    /// whether to act on it, so it cannot depend on the setting that acts on it.
+    /// </para>
+    /// <para>
+    /// Not recorded when the content was refused for its own reason. It never became a format the claim
+    /// could disagree with, and that refusal is already the client's answer.
+    /// </para>
+    /// </remarks>
+    private FileTypeDecision ConfirmAndRecord(
+        string fileName, FileTypeDecision inspected, string? declaredMediaType, string? docType)
+    {
+        var confirmed = Confirm(inspected, declaredMediaType);
+
+        if (inspected.Accepted
+            && inspected.Format is { } accepted
+            && ReadClaim(declaredMediaType) is { } claim
+            && !string.Equals(claim.Format?.Name, accepted.Name, StringComparison.OrdinalIgnoreCase))
+        {
+            var declaredFormat = claim.Format?.Name;
+            var outcome = confirmed.Accepted ? Outcome.Accepted : Outcome.Refused;
+
+            LogDeclaredMediaTypeDisagreement(
+                logger,
+                fileName,
+                claim.MediaType,
+                declaredFormat,
+                accepted.Name,
+                Stage.Content,
+                _policy.EnforceDeclaredMediaType,
+                outcome,
+                docType);
+        }
+
+        return confirmed;
+    }
+
+    /// <summary>Records a claim refused at the name check, before any content is read.</summary>
+    /// <param name="fileName">The name the client supplied, logged as it arrived.</param>
+    /// <param name="claim">The claim that was refused.</param>
+    /// <param name="comparedWith">The format the extension names, or null for a name with none.</param>
+    /// <param name="docType">The document classification, or null.</param>
+    /// <remarks>
+    /// Only reachable with the flag on: a refusal is the policy acting on the claim. The name check
+    /// runs twice per request, but a refusal at the endpoint ends the request before the handler runs
+    /// it again, so a refused claim is recorded once.
+    /// </remarks>
+    private void RecordRefusedClaim(string fileName, Claim claim, FileFormat? comparedWith, string? docType)
+    {
+        var declaredFormat = claim.Format?.Name;
+        var format = comparedWith?.Name;
+
+        LogDeclaredMediaTypeDisagreement(
+            logger,
+            fileName,
+            claim.MediaType,
+            declaredFormat,
+            format,
+            Stage.Name,
+            _policy.EnforceDeclaredMediaType,
+            Outcome.Refused,
+            docType);
+    }
 
     /// <summary>The content check for a name with no extension, and the one place it is logged.</summary>
     /// <param name="fileName">The name the client supplied, logged as it arrived.</param>
@@ -350,7 +445,11 @@ public sealed partial class FileTypeInspector(
         var decision = sizeBytes <= 0
             ? FileTypeDecision.Reject(RejectionReason.Empty, "The file is empty.")
             : MayIdentifyByContent
-                ? Confirm(IdentifyByContent(sizeBytes, header, openContent, docType, out detected), declaredMediaType)
+                ? ConfirmAndRecord(
+                    fileName,
+                    IdentifyByContent(sizeBytes, header, openContent, docType, out detected),
+                    declaredMediaType,
+                    docType)
                 : FileTypeDecision.Reject(
                     RejectionReason.NoExtension, "The file name carries no extension.");
 
@@ -443,9 +542,9 @@ public sealed partial class FileTypeInspector(
     // Source-generated, as CA1848 asks: no boxing into an object[], nothing formatted when the level
     // is off, and a template the compiler keeps in step with its arguments. The event ids are stable
     // on purpose — they are what a filter or a dashboard keys on once these logs leave the console.
-    // The file name goes out as the client sent it: it is the one field that says which client
-    // produces bare names. The JSON console formatter escapes it, so a name carrying a line break
-    // cannot forge a second entry.
+    // The file name and the declared media type go out as the client sent them: they are what says
+    // which client produces bare names or mislabels its files. The JSON console formatter escapes both,
+    // so a value carrying a line break cannot forge a second entry.
     [LoggerMessage(
         EventId = 2001,
         EventName = "ExtensionlessUploadAccepted",
@@ -475,9 +574,40 @@ public sealed partial class FileTypeInspector(
         long? sizeBytes,
         string? docType);
 
-    /// <summary>Which check refused an extensionless upload, as the log records it.</summary>
+    [LoggerMessage(
+        EventId = 2003,
+        EventName = "DeclaredMediaTypeDisagreement",
+        Level = LogLevel.Information,
+        Message = "Upload {FileName} was declared {DeclaredMediaType} (format {DeclaredFormat}), which does not "
+            + "match {Format} at the {Stage} check; {Outcome} (declared type enforced: {Enforced}, "
+            + "document type {DocType}).")]
+    private static partial void LogDeclaredMediaTypeDisagreement(
+        ILogger logger,
+        string fileName,
+        string declaredMediaType,
+        string? declaredFormat,
+        string? format,
+        string stage,
+        bool enforced,
+        string outcome,
+        string? docType);
+
+    /// <summary>What happened to an upload whose claim disagreed, as the log records it.</summary>
     /// <remarks>
-    /// The name check refuses before a byte is read, so its entries carry no size and no detected
+    /// The inspector's decision on the upload, not on the claim: <c>accepted</c> means the file passed the
+    /// inspection — as what its bytes are — while its claim was wrong. Whether it was then stored is the
+    /// handler's to say; storage and commit come after.
+    /// </remarks>
+    private static class Outcome
+    {
+        public const string Accepted = "accepted";
+
+        public const string Refused = "refused";
+    }
+
+    /// <summary>Which check an entry was written at, as the log records it.</summary>
+    /// <remarks>
+    /// The name check runs before a byte is read, so its entries carry no size and no detected
     /// format; telling the two apart is what makes those empty fields readable.
     /// </remarks>
     private static class Stage

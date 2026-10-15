@@ -69,6 +69,9 @@ rendered message — the same rule as asserting on a rule's type rather than its
 |---|---|---|---|
 | 2001 | `ExtensionlessUploadAccepted` | Information | `FileName`, `Format`, `SizeBytes`, `StoredName`, `DocType` |
 | 2002 | `ExtensionlessUploadRefused` | Information | `FileName`, `Reason`, `Stage`, `DetectedFormat`, `SizeBytes`, `DocType` |
+| 2003 | `DeclaredMediaTypeDisagreement` | Information | `FileName`, `DeclaredMediaType`, `DeclaredFormat`, `Format`, `Stage`, `Enforced`, `Outcome`, `DocType` |
+
+### 2001 and 2002 — names with no extension
 
 One entry for each upload with no extension that the inspector decides on, whatever it decided, and
 none for any other upload. They are the evidence for keeping `AllowMissingExtension` on or off: how
@@ -90,6 +93,36 @@ before the handler runs.
 Both are `Information`. A refused file is a client's outcome, not an operational fault, and a
 `Warning` that fires on every misnamed upload trains everyone to ignore warnings.
 
+### 2003 — a declared media type that disagrees with the file
+
+One entry whenever a client **claimed** a media type — not absent, blank or
+`application/octet-stream` — and the claim does not name the format it is compared with:
+
+| `Stage` | Written when | `Format` is | `Outcome` |
+|---|---|---|---|
+| `name` | the name check refuses on the claim: a type outside the catalogue, named or bare, or a named file declared across families | the extension's format, or null for a bare name | `refused` |
+| `content` | the content was accepted as a format the claim does not name | the accepted format | `accepted` when the flag is off or the claim was corrected within its family; `refused` across families |
+
+It is written **whether or not `EnforceDeclaredMediaType` is on** — `Enforced` says which. It is the
+evidence for that setting: which clients mislabel, how often, and whether turning the flag on would
+refuse any of them. Measuring cannot depend on the switch it is meant to inform.
+
+- **Not written** when the claim names the compared format, when no claim was made, or when the
+  content was refused for its own reason — it never became a format the claim could disagree with.
+- **On any upload, bare or named.** A bare upload can leave two entries: its 2001 or 2002, and a 2003.
+  A count of bare uploads keys on 2001 and 2002 only.
+- **`DeclaredMediaType` is the value as compared** — parameters after `;` dropped, trimmed — and
+  `DeclaredFormat` the catalogue format it names, null when it names none (`text/html`).
+- **`Outcome` is the inspector's decision on the upload**, not on the claim: `accepted` means the file
+  passed the inspection, as what its bytes are, while its claim was wrong. Storage and commit come
+  after, in the handler, and can still fail.
+- **Expect volume with the flag off.** A browser sending `application/vnd.ms-excel` for a CSV is a
+  disagreement and is recorded. That is the measurement; filter on the id. `Information`, not
+  `Warning`, for the reason given above.
+- **Not truncated**, like `FileName`: a truncated value is a different value. It is bounded by the
+  multipart header limit and the rate limiter per identity. Who the client is comes from the request
+  scope (`TraceId`, `RequestId`), not from the entry.
+
 ## The file name is logged as the client sent it
 
 It is the one field that says which client produces bare names, so it is logged unaltered. Two
@@ -97,7 +130,8 @@ consequences, both deliberate:
 
 - **Injection.** A name carrying a line break cannot forge a second entry: the JSON formatter escapes
   it, and the entry stays one line. That protection belongs to the JSON formatter — switching to
-  `simple` would give it up.
+  `simple` would give it up. The same holds for `DeclaredMediaType` in 2003, the other value logged as
+  the client sent it.
 - **Personal data.** A name like `bulletin-salaire-dupont` is personal data, so the log inherits the
   retention duty the document has. Whatever collects these logs later needs a retention period set
   for that, not the default "keep forever".

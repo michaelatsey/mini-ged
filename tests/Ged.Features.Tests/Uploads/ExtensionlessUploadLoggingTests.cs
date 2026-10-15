@@ -10,8 +10,8 @@ using Microsoft.Extensions.Options;
 namespace Ged.Features.Tests.Uploads;
 
 /// <summary>
-/// Every upload with no extension that the inspector decides on leaves exactly one log entry,
-/// accepted or refused, and nothing else does.
+/// Every upload with no extension that the inspector decides on leaves exactly one 2001 or 2002 entry,
+/// accepted or refused, and no other upload leaves one.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -19,6 +19,10 @@ namespace Ged.Features.Tests.Uploads;
 /// out to be — the evidence for keeping <see cref="UploadPolicyOptions.AllowMissingExtension"/> on or
 /// off. Exactly one matters: the name check runs twice per request, once at the endpoint and once in
 /// the handler, and a count that doubled would be worse than none.
+/// </para>
+/// <para>
+/// A declared media type that disagrees with the file adds a 2003 on any upload, bare or named. It is
+/// about the claim, not the name, and is covered by <see cref="DeclaredMediaTypeLoggingTests"/>.
 /// </para>
 /// <para>
 /// Assertions are on event ids and structured fields, never on the rendered message: the fields are
@@ -30,6 +34,8 @@ public sealed class ExtensionlessUploadLoggingTests
     private const int Accepted = 2001;
 
     private const int Refused = 2002;
+
+    private const int Disagreement = 2003;
 
     private static readonly DetectedFormat Pdf = new("pdf", "application/pdf");
 
@@ -106,7 +112,10 @@ public sealed class ExtensionlessUploadLoggingTests
 
         Inspector(policy, Pdf, logger).CheckName("rapport", "text/html", null);
 
-        var entry = logger.Entries.ShouldHaveSingleItem();
+        // One 2002 for the bare upload, as always. The refused claim adds its own 2003, which is about
+        // the claim and not about the name: a count of bare uploads keys on 2001/2002 only.
+        var entry = logger.Entries.Where(e => e.EventId.Id != Disagreement).ShouldHaveSingleItem();
+        logger.Entries.ShouldContain(e => e.EventId.Id == Disagreement);
         entry.EventId.Id.ShouldBe(Refused);
         entry.Fields["Reason"].ShouldBe(nameof(RejectionReason.DeclaredMediaTypeMismatch));
         entry.Fields["Stage"].ShouldBe("name");
@@ -133,7 +142,8 @@ public sealed class ExtensionlessUploadLoggingTests
             () => new MemoryStream([1, 2, 3]),
             docType: null);
 
-        var entry = logger.Entries.ShouldHaveSingleItem();
+        var entry = logger.Entries.Where(e => e.EventId.Id != Disagreement).ShouldHaveSingleItem();
+        logger.Entries.ShouldContain(e => e.EventId.Id == Disagreement);
         entry.EventId.Id.ShouldBe(Refused);
         entry.Fields["Reason"].ShouldBe(nameof(RejectionReason.DeclaredMediaTypeMismatch));
         entry.Fields["Stage"].ShouldBe("content");
@@ -153,7 +163,7 @@ public sealed class ExtensionlessUploadLoggingTests
     }
 
     [Fact]
-    public void A_named_upload_is_never_logged()
+    public void A_named_upload_with_no_claim_is_never_logged()
     {
         var logger = new RecordingLogger<FileTypeInspector>();
         var inspector = Inspector(Policy(), Pdf, logger);
