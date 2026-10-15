@@ -1,6 +1,6 @@
 # REPO MAP — mini-ged
 
-Generated 2026-10-01 from commit `f6b0a60`.
+Generated 2026-10-15 from commit `46e726f`.
 Regenerate with `./scripts/repo-map.sh` — never edit by hand.
 
 ---
@@ -29,10 +29,10 @@ Ged.Adapters.Storage.FileSystem                2 files     204 lines
 Ged.Adapters.Storage                           2 files      99 lines
 Ged.Core                                       9 files     275 lines
 Ged.Domain                                    51 files    2574 lines
-Ged.Features                                  48 files    3607 lines
+Ged.Features                                  48 files    4029 lines
 Ged.Api.Tests                                  2 files     101 lines
 Ged.Domain.Tests                              10 files     850 lines
-Ged.Features.Tests                            21 files    1786 lines
+Ged.Features.Tests                            27 files    3075 lines
 ```
 
 ## Reference graph
@@ -95,7 +95,7 @@ Ged.Domain.Tests
     -> Ged.Domain 
     packages: 4
 Ged.Features.Tests
-    -> Ged.Features 
+    -> Ged.Adapters.FileTypes Ged.Features 
     packages: 4
 ```
 
@@ -113,6 +113,7 @@ docs/api.md
 docs/containers.md
 docs/database-access.md
 docs/domain-boundaries.md
+docs/logging.md
 docs/microkit-deviations.md
 docs/persistence-providers.md
 docs/registration.md
@@ -257,6 +258,7 @@ docs/api.md                              The API surface
 docs/containers.md                       Containers
 docs/database-access.md                  Connecting to the databases
 docs/domain-boundaries.md                What this domain does not guarantee
+docs/logging.md                          Logging
 docs/microkit-deviations.md              Deviations from MicroKit.Domain
 docs/persistence-providers.md            Persistence: what differs between PostgreSQL and SQL Server
 docs/registration.md                     Choosing a detector
@@ -267,16 +269,16 @@ src/Ged.Adapters.FileTypes/registration.md ```csharp
 ## Recent history
 
 ```
-f6b0a60 docs(filetypes): translate BuiltInContentFormatDetector comments to English
-85ef11f chore(persistence): remove the duplicate DetectedFormat declaration
-b97c273 feat(uploads): accept an image under another image's extension
+46e726f feat(uploads): check the declared media type against the detected format
+46fe8c9 refactor(logging): drop the IsEnabled guard nothing could verify
+ecd3704 docs(logging): state which bare uploads leave no entry
+5bbede5 feat(logging): write JSON logs and record every extensionless upload
+e418522 feat(uploads): accept a file name with no extension, behind a flag
+3232a87 docs(tests): stop StubDetector claiming the detectors have tests
+38004a7 docs: show where the TIFF ceiling comes from, and report the real test counts
+8a4e988 chore: regenerate REPO-MAP.md
+78c03e3 docs(filetypes): translate BuiltInContentFormatDetector comments to English
+54d9934 chore(persistence): remove the duplicate DetectedFormat declaration
+069b8bf feat(uploads): accept an image under another image's extension
 0ab2d0f fix(blobs): report "no previous location" as null, not Guid.Empty (#31)
-3bbb9a2 fix(scripts): judge audit.sh's placeholders by the value, not the line (#30)
-800ebb5 chore(tests): guard that the host applies the upload transport limits (#28)
-d052a0e feat(filetypes): identify macro-enabled OOXML and read the real OLE2 directory (#27)
-d06ad66 fix(scripts): make the three guards fail when they find something (#25)
-ee6606d fix(blobs): make the location serving reads a pointer, not a state (#23)
-34e4f57 chore: regenerate REPO-MAP.md (#18)
-f9a8002 docs(claude-md): correct the four statements the code contradicts (#17)
-41f3ee4 fix(sql): declare every parameter's type, or refuse to send it (#15)
 ```
