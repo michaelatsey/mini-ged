@@ -105,7 +105,36 @@ it. Otherwise adding a document type would become a way around the policy.
 Browsers and HTTP clients disagree about the media type of the same file — `text/csv` versus
 `application/vnd.ms-excel` is the classic case. Enforcing the client's header rejects legitimate
 uploads while stopping no attacker, who controls that header entirely. Turn it on only for a known,
-controlled client.
+controlled client — an SDK or an integration that **states** the type of what it sends, rather than a
+browser guessing one.
+
+For that client the declared type is a claim, and it is held to the bytes:
+
+```
+declared type        compared with                        refused as
+─────────────        ─────────────                        ──────────
+absent, blank,       nothing — it claims nothing          never
+application/octet-stream
+outside the          nothing it could agree with          DeclaredMediaTypeMismatch,
+catalogue                                                 before the body is read
+another format       the extension, then the format       DeclaredMediaTypeMismatch
+                     the content is finally accepted as
+```
+
+- **Compared with the content, not only the name.** The name check refuses what no content could
+  reconcile — `rapport.pdf` declared `image/png` — before a byte is staged. The content check then
+  compares the claim with the format finally accepted: named, reclassified, or identified from a bare
+  name. That is the only place `photo.jpg` declared `image/jpeg` and holding a PNG is caught: the name
+  and the claim agree with each other and both contradict the bytes.
+- **`application/octet-stream` claims nothing.** It means "arbitrary binary data" (RFC 2046 §4.5.1),
+  and it is what a client relaying an upload it could not type sends. So the flag means *a claim made
+  must be true*, not *a claim must be made*: a client can always avoid the comparison by declaring
+  nothing.
+- **Compared as a format, not as a string.** Parameters after `;` and case are ignored; the rest must
+  be the media type the catalogue records for a format. No alias is accepted — `image/jpg`,
+  `application/x-pdf` — because each one widens what a claim may be and still agree. Adding one is a
+  reviewed edit to `FileFormats`, with its source.
+- **Never recorded.** What is stored, and served back, is the detected format's media type.
 
 ### One image under another image's extension
 
@@ -160,15 +189,11 @@ The code default is `[]`, deliberately, and not `["images"]`: the configuration 
 pre-filled list instead of replacing it, so a default written in code could be widened by a deployment
 but never turned off. `appsettings.json` states it instead.
 
-One interaction with the setting above is worth stating, because it runs the wrong way round.
-`EnforceDeclaredMediaType` compares the client's header against the format the **extension** names,
-in `CheckName`, before any content is read. So with it on, a client that sends
-`Content-Type: image/png` for `photo.jpg` — truthful about the bytes — is refused for the mismatch and
-never reaches reclassification, while a client that sends `image/jpeg` for those same PNG bytes passes
-the name check and gets corrected to `photo.png`. Turning the flag on therefore disables this rule for
-the honest client first. That is the cost of giving any weight to a header the uploader controls, which
-is why the flag is off by default: a deployment that turns it on has chosen the declared type over the
-detected one, and should not expect a misnamed image to be corrected.
+With `EnforceDeclaredMediaType` on, the two settings work together. A client that sends
+`Content-Type: image/png` for `photo.jpg` — truthful about the bytes — passes the name check, because a
+reclassifiable sibling may still agree with the content, and is stored as `photo.png`. A client that
+sends `image/jpeg` for those same PNG bytes is refused: reclassification forgives a name, not a claim.
+This used to run the other way round, when the header was compared with the extension alone.
 
 ### A name with no extension
 
@@ -196,16 +221,18 @@ What still applies is everything that applies to a named upload:
 The allowlist is the only gate on a format flagged `CarriesExecutableContent`, exactly as for a named
 upload: a deployment that does not list `doc` does not receive one by leaving the name bare.
 
-Three things are refused even with the flag on, all as `NoExtension`:
+Two things are refused even with the flag on, both as `NoExtension`:
 
 - **Text.** `txt`, `csv` and `json` carry no signature, so a signature-less format is only ever
   confirmed by the name it arrives under. Without one, picking a format would decide which document
-  types may receive the file and which media type is recorded for it.
+  types may receive the file and which media type is recorded for it. A declared `text/csv` does not
+  change that: the declared type confirms or contradicts a format, it never identifies one.
 - **Content the detector cannot place**, and content failing its own format's header check.
-- **Any bare name where `EnforceDeclaredMediaType` is on.** That check compares the header with the
-  format the extension names, in `CheckName`, before the body is read. With no extension there is
-  nothing to compare with, and a deployment that chose the header as a gate must not see it skipped by
-  an upload that leaves the extension out.
+
+With `EnforceDeclaredMediaType` on, a bare name is held to its declared type like any other upload:
+`rapport` declared `application/pdf` and holding a PDF is stored as `rapport.pdf`; declared
+`image/png`, it is refused as `DeclaredMediaTypeMismatch`. This used to refuse every bare name, while
+the comparison stood on the format an extension names; it now stands on the format the content is.
 
 The cost is the cheap refusal. With no claimed format there is no per-format ceiling before the body
 is read, so the staging is bounded by `MaxSizeBytes`, and the detected format's ceiling applies after

@@ -8,12 +8,17 @@ namespace Ged.Features.Documents.UploadDocument;
 /// <summary>Creates a document from an uploaded file.</summary>
 /// <param name="FolderId">The folder the document belongs to.</param>
 /// <param name="FileName">The file name as supplied by the client.</param>
+/// <param name="DeclaredMediaType">
+/// The media type the client declared, or null. Compared with the content when the policy holds clients
+/// to it; never recorded.
+/// </param>
 /// <param name="DocType">The business classification, or null for unknown.</param>
 /// <param name="Content">The bytes. Read once, forward-only.</param>
 /// <param name="By">The acting identity.</param>
 public sealed record UploadDocumentCommand(
     Guid FolderId,
     string FileName,
+    string? DeclaredMediaType,
     string? DocType,
     Stream Content,
     string By);
@@ -83,7 +88,7 @@ public sealed class UploadDocumentHandler(
 
         // The ceiling is resolved from the extension before a byte is read, so an oversized upload
         // stops at the limit instead of being written to disk in full and refused afterwards.
-        var byName = fileTypes.CheckName(command.FileName, declaredMediaType: null, docType.Code);
+        var byName = fileTypes.CheckName(command.FileName, command.DeclaredMediaType, docType.Code);
 
         if (!byName.Accepted)
         {
@@ -106,7 +111,7 @@ public sealed class UploadDocumentHandler(
         // The content decides, not the name and not the header the client sent. Both were already
         // checked at the endpoint, cheaply; this is the one that is evidence.
         var decision = fileTypes.Inspect(
-            command.FileName, staged.SizeBytes, staged.Header, staged.OpenRead, docType.Code);
+            command.FileName, command.DeclaredMediaType, staged.SizeBytes, staged.Header, staged.OpenRead, docType.Code);
 
         if (!decision.Accepted)
         {

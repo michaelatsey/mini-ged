@@ -89,10 +89,20 @@ public sealed class UploadPolicyOptions
     /// Gets or sets a value indicating whether the declared media type must match the detected one.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Off by default. Browsers and HTTP clients disagree about the media type of the same file —
     /// <c>text/csv</c> versus <c>application/vnd.ms-excel</c> is the classic case — so enforcing the
     /// client's header rejects legitimate uploads while stopping no attacker, who controls that
-    /// header entirely. Enable it only for a known, controlled client.
+    /// header entirely. Enable it only for a known, controlled client: an SDK or an integration that
+    /// states the type of what it sends.
+    /// </para>
+    /// <para>
+    /// When on, a declared type is a claim, compared with the format the content is finally accepted
+    /// as — named, reclassified, or identified from a bare name. A claim the bytes contradict, or one
+    /// naming no catalogue format, is refused. An absent or blank type, or
+    /// <c>application/octet-stream</c>, claims nothing and is never refused: a claim made must be
+    /// true, but no claim has to be made.
+    /// </para>
     /// </remarks>
     public bool EnforceDeclaredMediaType { get; set; }
 
@@ -113,10 +123,10 @@ public sealed class UploadPolicyOptions
     /// <para>
     /// Text is refused even when this is on. <c>txt</c>, <c>csv</c> and <c>json</c> carry no
     /// signature, so without a name nothing tells them apart, and choosing one would decide which
-    /// document types may receive the file and which media type is recorded for it. And a name with
-    /// no extension is refused whenever <see cref="EnforceDeclaredMediaType"/> is on: that check
-    /// compares the client's header with the format the extension names, and a deployment that chose
-    /// it as a gate must not see it skipped by an upload that simply leaves the extension out.
+    /// document types may receive the file and which media type is recorded for it — a declared type
+    /// does not change that, since it confirms or contradicts a format and never identifies one. With
+    /// <see cref="EnforceDeclaredMediaType"/> on, a bare name is held to its declared type like any
+    /// other upload, compared with the format its content turns out to be.
     /// </para>
     /// </remarks>
     public bool AllowMissingExtension { get; set; }

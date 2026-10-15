@@ -42,7 +42,7 @@ internal static class UploadDocumentEndpoint
 
         var outcome = await handler.HandleAsync(
             new UploadDocumentCommand(
-                folderId, file.FileName, docType, content, http.User.Identity?.Name ?? "anonymous"),
+                folderId, file.FileName, file.ContentType, docType, content, http.User.Identity?.Name ?? "anonymous"),
             ct);
 
         return outcome.ToResult(response =>

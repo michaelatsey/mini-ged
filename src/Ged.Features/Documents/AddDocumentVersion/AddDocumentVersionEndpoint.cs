@@ -42,7 +42,7 @@ internal static class AddDocumentVersionEndpoint
 
         var outcome = await handler.HandleAsync(
             new AddDocumentVersionCommand(
-                id, file.FileName, comment, content, http.User.Identity?.Name ?? "anonymous"),
+                id, file.FileName, file.ContentType, comment, content, http.User.Identity?.Name ?? "anonymous"),
             ct);
 
         return outcome.ToResult(Results.Ok);

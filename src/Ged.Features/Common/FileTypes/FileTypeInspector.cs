@@ -42,21 +42,24 @@ public sealed partial class FileTypeInspector(
     public FileTypeDecision CheckName(string fileName, string? declaredMediaType, string? docType)
     {
         var extension = ExtensionOf(fileName);
+        var claimed = ClaimOf(declaredMediaType);
 
         if (extension.Length == 0)
         {
-            // Nothing claimed, so nothing to refuse cheaply and no per-format ceiling to bound the
-            // staging with: the content will decide, and the global ceiling stops the copy until then.
-            // Only the refusal is logged here: an accepted name is logged once, by Inspect, when the
-            // content has decided — and this check runs twice per request, at the endpoint and again
-            // in the handler.
-            if (MayIdentifyByContent)
+            // No extension claimed, so no per-format ceiling to bound the staging with: the content
+            // will decide, and the global ceiling stops the copy until then. Only refusals are logged
+            // here: an accepted name is logged once, by Inspect, when the content has decided — and
+            // this check runs twice per request, at the endpoint and again in the handler.
+            var refused = !MayIdentifyByContent
+                ? FileTypeDecision.Reject(RejectionReason.NoExtension, "The file name carries no extension.")
+                : claimed is { Format: null }
+                    ? DeclaredOutsideCatalogue()
+                    : null;
+
+            if (refused is null)
             {
                 return FileTypeDecision.Undetermined(_policy.MaxSizeBytes);
             }
-
-            var refused = FileTypeDecision.Reject(
-                RejectionReason.NoExtension, "The file name carries no extension.");
 
             LogExtensionlessRefused(
                 logger, fileName, refused.Code, Stage.Name, detectedFormat: null, sizeBytes: null, docType);
@@ -71,16 +74,13 @@ public sealed partial class FileTypeInspector(
                 $"Files with the '.{extension}' extension are not accepted here.");
         }
 
-        if (_policy.EnforceDeclaredMediaType
-            && !string.IsNullOrWhiteSpace(declaredMediaType)
-            && !string.Equals(
-                declaredMediaType.Split(';')[0].Trim(),
-                format.MediaType,
-                StringComparison.OrdinalIgnoreCase))
+        if (claimed is { } claim && !MayStillAgree(claim, format))
         {
-            return FileTypeDecision.Reject(
-                RejectionReason.DeclaredMediaTypeMismatch,
-                "The declared content type does not match the file extension.");
+            return claim.Format is null
+                ? DeclaredOutsideCatalogue()
+                : FileTypeDecision.Reject(
+                    RejectionReason.DeclaredMediaTypeMismatch,
+                    "The declared content type does not match the file extension.");
         }
 
         // Not accepted yet — only "nothing rules it out so far". The content still decides. The
@@ -91,6 +91,7 @@ public sealed partial class FileTypeInspector(
     /// <inheritdoc />
     public FileTypeDecision Inspect(
         string fileName,
+        string? declaredMediaType,
         long sizeBytes,
         ReadOnlySpan<byte> header,
         Func<Stream> openContent,
@@ -102,9 +103,26 @@ public sealed partial class FileTypeInspector(
 
         if (extension.Length == 0)
         {
-            return InspectExtensionless(fileName, sizeBytes, header, openContent, docType);
+            return InspectExtensionless(fileName, declaredMediaType, sizeBytes, header, openContent, docType);
         }
 
+        return Confirm(InspectNamed(extension, sizeBytes, header, openContent, docType), declaredMediaType);
+    }
+
+    /// <summary>The content check for a name carrying an extension.</summary>
+    /// <param name="extension">Its last extension, already read.</param>
+    /// <param name="sizeBytes">The size actually received.</param>
+    /// <param name="header">The first bytes of the content.</param>
+    /// <param name="openContent">Opens the staged content.</param>
+    /// <param name="docType">The document classification, or null.</param>
+    /// <returns>The decision, before any declared type is compared with it.</returns>
+    private FileTypeDecision InspectNamed(
+        string extension,
+        long sizeBytes,
+        ReadOnlySpan<byte> header,
+        Func<Stream> openContent,
+        string? docType)
+    {
         if (sizeBytes <= 0)
         {
             return FileTypeDecision.Reject(RejectionReason.Empty, "The file is empty.");
@@ -165,14 +183,125 @@ public sealed partial class FileTypeInspector(
     /// <remarks>
     /// Both gates read this one property, so a caller reaching <see cref="Inspect"/> without
     /// <see cref="CheckName"/> meets the same rule. <see cref="UploadPolicyOptions.EnforceDeclaredMediaType"/>
-    /// turns it off because its comparison needs the format an extension names; with none, the gate a
-    /// deployment chose would be skipped by leaving the extension out.
+    /// used to turn it off, because its comparison needed the format an extension names. It no longer
+    /// does: the declared type is compared with the format the content turns out to be, which a bare
+    /// name has as surely as a named one.
     /// </remarks>
-    private bool MayIdentifyByContent =>
-        _policy.AllowMissingExtension && !_policy.EnforceDeclaredMediaType;
+    private bool MayIdentifyByContent => _policy.AllowMissingExtension;
+
+    /// <summary>Reads the client's declared media type as a claim, when the policy holds clients to one.</summary>
+    /// <param name="declaredMediaType">The value the client sent. Untrusted.</param>
+    /// <returns>
+    /// Null when nothing is claimed — the flag is off, or the value is absent, blank or
+    /// <c>application/octet-stream</c>. Otherwise the claim, carrying the catalogue format it names, or
+    /// a null format when it names none.
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// <c>application/octet-stream</c> means "arbitrary binary data" (RFC 2046 §4.5.1). It names no
+    /// format, and it is what a client relaying an upload it could not type sends — refusing it would
+    /// refuse a caller for not knowing, which is not the same as lying. The consequence is stated in
+    /// <see cref="UploadPolicyOptions.EnforceDeclaredMediaType"/>: a claim made must be true, but no
+    /// claim has to be made.
+    /// </para>
+    /// <para>
+    /// Parameters after <c>;</c> are dropped and case is ignored, because <c>charset=</c> and
+    /// capitalisation say nothing about the format. Nothing else is normalised: an alias would be a
+    /// second name under which a claim agrees with content, and the catalogue holds none.
+    /// </para>
+    /// </remarks>
+    private Claim? ClaimOf(string? declaredMediaType)
+    {
+        if (!_policy.EnforceDeclaredMediaType || string.IsNullOrWhiteSpace(declaredMediaType))
+        {
+            return null;
+        }
+
+        var mediaType = declaredMediaType.Split(';')[0].Trim();
+
+        if (mediaType.Length == 0
+            || string.Equals(mediaType, UnknownMediaType, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return new Claim(FileFormats.TryGetByMediaType(mediaType, out var format) ? format : null);
+    }
+
+    /// <summary>Determines whether a claim may still agree with the content once it is read.</summary>
+    /// <param name="claim">What the client declared.</param>
+    /// <param name="named">The format the extension names.</param>
+    /// <returns>
+    /// True when the claim names that format, or a sibling the content could be reclassified into.
+    /// </returns>
+    /// <remarks>
+    /// The name check refuses only what no content could reconcile. <c>photo.jpg</c> declared
+    /// <c>image/png</c> is let through: the bytes may be the PNG the client says, and reclassification
+    /// would then make the name agree too. <c>rapport.pdf</c> declared <c>image/png</c> is refused
+    /// here, before a byte is staged — no PDF and no reclassification can make those two agree.
+    /// </remarks>
+    private bool MayStillAgree(Claim claim, FileFormat named) =>
+        claim.Format is { } declared
+        && (string.Equals(declared.Name, named.Name, StringComparison.OrdinalIgnoreCase)
+            || ShareReclassifiableGroup(named, declared));
+
+    /// <summary>Holds an accepted decision to the claim the client made, if it made one.</summary>
+    /// <param name="decision">The content check's decision.</param>
+    /// <param name="declaredMediaType">What the client declared.</param>
+    /// <returns>The decision unchanged, or a <see cref="RejectionReason.DeclaredMediaTypeMismatch"/> refusal.</returns>
+    /// <remarks>
+    /// <para>
+    /// Compared with the format finally accepted — named, reclassified, or identified from a bare
+    /// name's bytes — never with the extension. The name check can only compare with the extension,
+    /// and that misses the one case where the name and the claim agree with each other and both
+    /// contradict the bytes: <c>photo.jpg</c> declared <c>image/jpeg</c> and holding a PNG.
+    /// </para>
+    /// <para>
+    /// A refusal is returned as it is. Its reason already names what the content really is, which says
+    /// more to the client than a mismatch would.
+    /// </para>
+    /// </remarks>
+    private FileTypeDecision Confirm(FileTypeDecision decision, string? declaredMediaType)
+    {
+        if (!decision.Accepted || decision.Format is not { } accepted || ClaimOf(declaredMediaType) is not { } claim)
+        {
+            return decision;
+        }
+
+        if (claim.Format is null)
+        {
+            return DeclaredOutsideCatalogue();
+        }
+
+        return string.Equals(claim.Format.Name, accepted.Name, StringComparison.OrdinalIgnoreCase)
+            ? decision
+            : FileTypeDecision.Reject(
+                RejectionReason.DeclaredMediaTypeMismatch,
+                $"The declared content type does not match the content, which is a "
+                    + $"{accepted.Name.ToUpperInvariant()} file.");
+    }
+
+    /// <summary>Refuses a declared type that names no format this catalogue knows.</summary>
+    /// <returns>The refusal.</returns>
+    /// <remarks>
+    /// <c>text/html</c> or <c>application/x-msdownload</c> cannot agree with anything this policy
+    /// accepts, so it is refused as a mismatch whatever the bytes turn out to be.
+    /// </remarks>
+    private static FileTypeDecision DeclaredOutsideCatalogue() =>
+        FileTypeDecision.Reject(
+            RejectionReason.DeclaredMediaTypeMismatch,
+            "The declared content type is not one of the accepted formats.");
+
+    /// <summary>The media type a client sends when it names no format.</summary>
+    private const string UnknownMediaType = "application/octet-stream";
+
+    /// <summary>A media type the client declared, read against the catalogue.</summary>
+    /// <param name="Format">The format it names, or null when it names none the catalogue knows.</param>
+    private readonly record struct Claim(FileFormat? Format);
 
     /// <summary>The content check for a name with no extension, and the one place it is logged.</summary>
     /// <param name="fileName">The name the client supplied, logged as it arrived.</param>
+    /// <param name="declaredMediaType">What the client declared, compared once the content has decided.</param>
     /// <param name="sizeBytes">The size actually received.</param>
     /// <param name="header">The first bytes of the content.</param>
     /// <param name="openContent">Opens the staged content.</param>
@@ -192,6 +321,7 @@ public sealed partial class FileTypeInspector(
     /// </remarks>
     private FileTypeDecision InspectExtensionless(
         string fileName,
+        string? declaredMediaType,
         long sizeBytes,
         ReadOnlySpan<byte> header,
         Func<Stream> openContent,
@@ -202,7 +332,7 @@ public sealed partial class FileTypeInspector(
         var decision = sizeBytes <= 0
             ? FileTypeDecision.Reject(RejectionReason.Empty, "The file is empty.")
             : MayIdentifyByContent
-                ? IdentifyByContent(sizeBytes, header, openContent, docType, out detected)
+                ? Confirm(IdentifyByContent(sizeBytes, header, openContent, docType, out detected), declaredMediaType)
                 : FileTypeDecision.Reject(
                     RejectionReason.NoExtension, "The file name carries no extension.");
 

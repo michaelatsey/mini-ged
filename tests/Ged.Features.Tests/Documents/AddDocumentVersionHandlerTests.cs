@@ -94,7 +94,7 @@ public sealed class AddDocumentVersionHandlerTests
             await using var content = Content.Open();
 
             return await Handler.HandleAsync(new AddDocumentVersionCommand(
-                _document.Id.Value, "invoice.pdf", "the signed copy", content, Fixed.By));
+                _document.Id.Value, "invoice.pdf", null, "the signed copy", content, Fixed.By));
         }
     }
 }

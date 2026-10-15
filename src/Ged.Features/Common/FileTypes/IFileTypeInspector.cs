@@ -24,6 +24,11 @@ public interface IFileTypeInspector
 
     /// <summary>Decides on the staged content.</summary>
     /// <param name="fileName">The name supplied by the client.</param>
+    /// <param name="declaredMediaType">
+    /// The media type supplied by the client. Untrusted, never recorded: when the policy holds clients
+    /// to it, it is compared with the format the content turns out to be — the only point where both
+    /// are known.
+    /// </param>
     /// <param name="sizeBytes">The size actually received, not the one declared.</param>
     /// <param name="header">The first bytes of the content.</param>
     /// <param name="openContent">Opens the staged content, for formats that need more than a header.</param>
@@ -31,6 +36,7 @@ public interface IFileTypeInspector
     /// <returns>The decision, carrying the detected format when accepted.</returns>
     FileTypeDecision Inspect(
         string fileName,
+        string? declaredMediaType,
         long sizeBytes,
         ReadOnlySpan<byte> header,
         Func<Stream> openContent,

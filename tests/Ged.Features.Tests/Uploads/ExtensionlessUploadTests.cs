@@ -146,16 +146,16 @@ public sealed class ExtensionlessUploadTests
     }
 
     [Fact]
-    public void An_enforced_declared_media_type_refuses_an_extensionless_name()
+    public void An_enforced_declared_media_type_is_compared_with_the_content_of_an_extensionless_name()
     {
-        // A deployment that turned EnforceDeclaredMediaType on chose the client's header as a gate,
-        // and the name check compares it with the format the extension names. With no extension that
-        // comparison has nothing to stand on, so the name is refused rather than let past the gate.
+        // This used to refuse every bare name: the comparison stood on the format the extension named,
+        // and with no extension it had nothing to stand on. It now stands on the detected format, so
+        // the gate a deployment chose is applied rather than skipped — the full matrix is in
+        // DeclaredMediaTypeTests.
         var policy = Shipped();
         policy.EnforceDeclaredMediaType = true;
 
-        CheckName(policy, "rapport", "application/pdf").Reason.ShouldBe(RejectionReason.NoExtension);
-        Inspect(policy, "rapport", Pdf).Reason.ShouldBe(RejectionReason.NoExtension);
+        CheckName(policy, "rapport", "application/pdf").Reason.ShouldBe(RejectionReason.None);
     }
 
     [Fact]
@@ -196,7 +196,7 @@ public sealed class ExtensionlessUploadTests
         await using var content = Content.Open();
 
         var outcome = await handler.HandleAsync(new UploadDocumentCommand(
-            target.Id.Value, "rapport", null, content, Fixed.By));
+            target.Id.Value, "rapport", null, null, content, Fixed.By));
 
         outcome.Succeeded.ShouldBeTrue();
 
@@ -234,7 +234,7 @@ public sealed class ExtensionlessUploadTests
         await using var content = Content.Open();
 
         var outcome = await handler.HandleAsync(new AddDocumentVersionCommand(
-            document.Id.Value, "scan", "from the copier", content, Fixed.By));
+            document.Id.Value, "scan", null, "from the copier", content, Fixed.By));
 
         outcome.Succeeded.ShouldBeTrue();
 
@@ -297,7 +297,7 @@ public sealed class ExtensionlessUploadTests
         string? docType = null,
         byte[]? header = null) =>
         new FileTypeInspector(new StubDetector(detected), Options.Create(policy), NullLogger<FileTypeInspector>.Instance).Inspect(
-            fileName, sizeBytes, header ?? [], () => new MemoryStream([1, 2, 3]), docType);
+            fileName, declaredMediaType: null, sizeBytes, header ?? [], () => new MemoryStream([1, 2, 3]), docType);
 
     /// <summary>The real inspector, detecting a PDF, with extensionless uploads on.</summary>
     private static FileTypeInspector Inspector() => new(

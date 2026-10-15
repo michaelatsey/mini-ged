@@ -48,7 +48,7 @@ public sealed class ReclassifiedUploadNameTests
         await using var content = Content.Open();
 
         var outcome = await handler.HandleAsync(new UploadDocumentCommand(
-            Target.Id.Value, "photo.jpg", null, content, Fixed.By));
+            Target.Id.Value, "photo.jpg", null, null, content, Fixed.By));
 
         outcome.Succeeded.ShouldBeTrue();
 
@@ -87,7 +87,7 @@ public sealed class ReclassifiedUploadNameTests
         await using var content = Content.Open();
 
         var outcome = await handler.HandleAsync(new AddDocumentVersionCommand(
-            document.Id.Value, "photo.jpg", "the one the phone sent", content, Fixed.By));
+            document.Id.Value, "photo.jpg", null, "the one the phone sent", content, Fixed.By));
 
         outcome.Succeeded.ShouldBeTrue();
 

@@ -24,7 +24,10 @@ public enum RejectionReason
     /// </summary>
     ExtensionNotAllowed,
 
-    /// <summary>The client's declared media type contradicts its own extension.</summary>
+    /// <summary>
+    /// The client's declared media type contradicts its extension or its content, or names no format
+    /// the catalogue knows.
+    /// </summary>
     DeclaredMediaTypeMismatch,
 
     /// <summary>The content does not look like what the extension claims.</summary>

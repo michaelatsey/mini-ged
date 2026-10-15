@@ -18,6 +18,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Ged.Features\Ged.Features.csproj" />
+    <!-- The real built-in detector, for the extensionless matrix on actual bytes. -->
+    <ProjectReference Include="..\..\src\Ged.Adapters.FileTypes\Ged.Adapters.FileTypes.csproj" />
   </ItemGroup>
 
   <ItemGroup>

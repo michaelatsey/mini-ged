@@ -98,6 +98,11 @@ public static class FileFormats
     private static readonly Dictionary<string, FileFormat> ByName =
         All.ToDictionary(f => f.Name, StringComparer.OrdinalIgnoreCase);
 
+    // ToDictionary throws on a duplicate key, so two formats can never claim one media type: a
+    // declared type always resolves to at most one format.
+    private static readonly Dictionary<string, FileFormat> ByMediaType =
+        All.ToDictionary(f => f.MediaType, StringComparer.OrdinalIgnoreCase);
+
     /// <summary>Named sets, so configuration can say "documents" instead of listing thirteen names.</summary>
     private static readonly Dictionary<string, string[]> Groups =
         new(StringComparer.OrdinalIgnoreCase)
@@ -133,6 +138,19 @@ public static class FileFormats
     /// <returns>True when the name matches a known format.</returns>
     public static bool TryGet(string name, out FileFormat? format) =>
         ByName.TryGetValue(name, out format);
+
+    /// <summary>Finds the format a media type names.</summary>
+    /// <param name="mediaType">A media type without parameters, such as <c>application/pdf</c>.</param>
+    /// <param name="format">The format, when one is recorded under that media type.</param>
+    /// <returns>True when a known format is recorded under the media type.</returns>
+    /// <remarks>
+    /// Matched against <see cref="FileFormat.MediaType"/> only, the one value this project records
+    /// for each format. No alias is known here — <c>image/jpg</c>, <c>application/x-pdf</c> — because
+    /// each one would widen what a client's claim may be and still count as agreeing with the content;
+    /// adding one is a reviewed edit to this catalogue, with the source that justifies it.
+    /// </remarks>
+    public static bool TryGetByMediaType(string mediaType, out FileFormat? format) =>
+        ByMediaType.TryGetValue(mediaType, out format);
 
     /// <summary>Expands a configured entry into format names.</summary>
     /// <param name="nameOrGroup">A format name, or a set name such as "documents".</param>

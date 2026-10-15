@@ -259,7 +259,7 @@ public sealed class ImageReclassificationTests
         string? docType = null,
         byte[]? header = null) =>
         new FileTypeInspector(new StubDetector(detected), Options.Create(policy), NullLogger<FileTypeInspector>.Instance).Inspect(
-            fileName, sizeBytes, header ?? [], () => new MemoryStream([1, 2, 3]), docType);
+            fileName, declaredMediaType: null, sizeBytes, header ?? [], () => new MemoryStream([1, 2, 3]), docType);
 
     /// <summary>Binds the policy the way the host does, which is where the validation lives.</summary>
     private static UploadPolicyOptions Bound(params string[] reclassifiable)
