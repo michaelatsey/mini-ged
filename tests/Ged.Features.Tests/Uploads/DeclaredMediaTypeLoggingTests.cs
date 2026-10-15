@@ -24,6 +24,8 @@ namespace Ged.Features.Tests.Uploads;
 /// </remarks>
 public sealed class DeclaredMediaTypeLoggingTests
 {
+    private const int BareAccepted = 2001;
+
     private const int BareRefused = 2002;
 
     private const int Disagreement = 2003;
@@ -31,6 +33,8 @@ public sealed class DeclaredMediaTypeLoggingTests
     private static readonly DetectedFormat Pdf = new("pdf", "application/pdf");
 
     private static readonly DetectedFormat Png = new("png", "image/png");
+
+    private static readonly DetectedFormat Jpeg = new("jpg", "image/jpeg");
 
     private static readonly DetectedFormat Docx =
         new("docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
@@ -100,6 +104,63 @@ public sealed class DeclaredMediaTypeLoggingTests
         entry.Fields["Stage"].ShouldBe("content");
         entry.Fields["DeclaredFormat"].ShouldBe("png");
         entry.Fields["Format"].ShouldBe("pdf");
+    }
+
+    [Fact]
+    public void An_accepted_bare_upload_with_a_wrong_claim_leaves_its_2001_and_a_2003()
+    {
+        // Flag off: the bare upload is accepted on its bytes and logged as always; the wrong claim adds
+        // its own entry. A count of bare uploads keys on 2001/2002 and still sees one.
+        var logger = new RecordingLogger<FileTypeInspector>();
+
+        var decision = Inspect(Inspector(Policy(enforce: false), Pdf, logger), "rapport", "image/png");
+
+        decision.Reason.ShouldBe(RejectionReason.None);
+        logger.Entries.Count.ShouldBe(2);
+        logger.Entries.ShouldContain(e => e.EventId.Id == BareAccepted);
+
+        var entry = logger.Entries.Single(e => e.EventId.Id == Disagreement);
+        entry.Fields["FileName"].ShouldBe("rapport");
+        entry.Fields["Stage"].ShouldBe("content");
+        entry.Fields["Outcome"].ShouldBe("accepted");
+        entry.Fields["Enforced"].ShouldBe(false);
+        entry.Fields["DeclaredFormat"].ShouldBe("png");
+        entry.Fields["Format"].ShouldBe("pdf");
+    }
+
+    [Fact]
+    public void A_bare_image_claim_corrected_within_its_family_is_logged_as_accepted()
+    {
+        var logger = new RecordingLogger<FileTypeInspector>();
+
+        var decision = Inspect(Inspector(Policy(enforce: true), Jpeg, logger), "curieux", "image/png");
+
+        decision.Reason.ShouldBe(RejectionReason.None);
+        logger.Entries.ShouldContain(e => e.EventId.Id == BareAccepted);
+
+        var entry = logger.Entries.Single(e => e.EventId.Id == Disagreement);
+        entry.Fields["Outcome"].ShouldBe("accepted");
+        entry.Fields["Enforced"].ShouldBe(true);
+        entry.Fields["DeclaredFormat"].ShouldBe("png");
+        entry.Fields["Format"].ShouldBe("jpeg");
+    }
+
+    [Fact]
+    public void A_bare_name_declared_outside_the_catalogue_is_logged_at_the_name_stage_with_no_format()
+    {
+        var logger = new RecordingLogger<FileTypeInspector>();
+
+        var decision = Inspector(Policy(enforce: true), null, logger).CheckName("curieux", "text/html", null);
+
+        decision.Reason.ShouldBe(RejectionReason.DeclaredMediaTypeMismatch);
+        logger.Entries.ShouldContain(e => e.EventId.Id == BareRefused);
+
+        var entry = logger.Entries.Single(e => e.EventId.Id == Disagreement);
+        entry.Fields["Stage"].ShouldBe("name");
+        entry.Fields["Outcome"].ShouldBe("refused");
+        entry.Fields["DeclaredMediaType"].ShouldBe("text/html");
+        entry.Fields["DeclaredFormat"].ShouldBeNull();
+        entry.Fields["Format"].ShouldBeNull();
     }
 
     [Fact]
