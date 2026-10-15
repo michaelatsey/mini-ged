@@ -117,15 +117,23 @@ absent, blank,       nothing — it claims nothing          never
 application/octet-stream
 outside the          nothing it could agree with          DeclaredMediaTypeMismatch,
 catalogue                                                 before the body is read
-another format       the extension, then the format       DeclaredMediaTypeMismatch
-                     the content is finally accepted as
+another format,      the extension, then the format       DeclaredMediaTypeMismatch
+outside the family   the content is finally accepted as
+a sibling in a       the same                             never — corrected, like the extension
+reclassifiable family
 ```
 
 - **Compared with the content, not only the name.** The name check refuses what no content could
   reconcile — `rapport.pdf` declared `image/png` — before a byte is staged. The content check then
   compares the claim with the format finally accepted: named, reclassified, or identified from a bare
-  name. That is the only place `photo.jpg` declared `image/jpeg` and holding a PNG is caught: the name
-  and the claim agree with each other and both contradict the bytes.
+  name. A bare name declared `image/png` and holding a PDF is caught there: the claim said image, the
+  bytes are a document.
+- **Corrected within a family, like the extension.** A claim is held to the rule the extension is held
+  to, no stricter: inside a family enabled in `ReclassifiableGroups`, a wrong label is corrected, not
+  refused. `photo.jpg` declared `image/jpeg` and holding a PNG is stored as `photo.png`, exactly as with
+  no header. Clients commonly derive the declared type from the file name; holding that claim to strict
+  equality would refuse the naming accident reclassification exists to accept, and stop no attacker,
+  who sends whatever header agrees. With no family enabled, the claim is strict again, as the name is.
 - **`application/octet-stream` claims nothing.** It means "arbitrary binary data" (RFC 2046 §4.5.1),
   and it is what a client relaying an upload it could not type sends. So the flag means *a claim made
   must be true*, not *a claim must be made*: a client can always avoid the comparison by declaring
@@ -189,11 +197,12 @@ The code default is `[]`, deliberately, and not `["images"]`: the configuration 
 pre-filled list instead of replacing it, so a default written in code could be widened by a deployment
 but never turned off. `appsettings.json` states it instead.
 
-With `EnforceDeclaredMediaType` on, the two settings work together. A client that sends
-`Content-Type: image/png` for `photo.jpg` — truthful about the bytes — passes the name check, because a
-reclassifiable sibling may still agree with the content, and is stored as `photo.png`. A client that
-sends `image/jpeg` for those same PNG bytes is refused: reclassification forgives a name, not a claim.
-This used to run the other way round, when the header was compared with the extension alone.
+With `EnforceDeclaredMediaType` on, the two settings work together. `photo.jpg` holding a PNG is
+stored as `photo.png` whether the client declares `image/png` — truthful about the bytes — or
+`image/jpeg`, derived from the name: a claim is corrected within the family as the extension is. What
+stays refused is a claim that crosses families, `image/png` on a PDF. Both used to run differently:
+first the header was compared with the extension alone, and refused the truthful client; then it was
+held to strict equality with the bytes, and refused the client that named its type after the file.
 
 ### A name with no extension
 

@@ -102,6 +102,18 @@ public sealed class ExtensionlessDetectionMatrixTests
         Inspect("scan", "text/html", Fixture(format)).Reason.ShouldBe(RejectionReason.DeclaredMediaTypeMismatch);
     }
 
+    [Fact]
+    public void A_bare_image_declared_as_a_sibling_image_is_accepted_as_what_its_bytes_are()
+    {
+        // JPEG bytes declared PNG: a wrong label inside the images family, forgiven as a wrong extension
+        // would be. The stored name and media type follow the bytes, not the claim.
+        var decision = Inspect("scan", "image/png", Fixture("jpeg"));
+
+        decision.Reason.ShouldBe(RejectionReason.None);
+        decision.MediaType.ShouldBe("image/jpeg");
+        decision.StoredNameFor("scan").ShouldBe("scan.jpg");
+    }
+
     [Theory]
     [InlineData("text/plain")]
     [InlineData("text/csv")]

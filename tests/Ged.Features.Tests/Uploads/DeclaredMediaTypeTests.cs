@@ -14,8 +14,9 @@ namespace Ged.Features.Tests.Uploads;
 /// <para>
 /// The bytes decide, and every claim the client made must agree with them: the declared type is
 /// compared with the format finally accepted — named, reclassified, or identified from the content of
-/// a bare name. <c>application/octet-stream</c>, a blank or an absent type claim nothing, and are
-/// never a mismatch.
+/// a bare name — and, like the extension, a wrong label is corrected within a reclassifiable family
+/// and refused across one. <c>application/octet-stream</c>, a blank or an absent type claim nothing,
+/// and are never a mismatch.
 /// </para>
 /// <para>
 /// The detector is stubbed: what the policy does with its answer is the question here. The same
@@ -27,6 +28,8 @@ public sealed class DeclaredMediaTypeTests
     private static readonly DetectedFormat Pdf = new("pdf", "application/pdf");
 
     private static readonly DetectedFormat Png = new("png", "image/png");
+
+    private static readonly DetectedFormat Jpeg = new("jpg", "image/jpeg");
 
     private static readonly DetectedFormat Docx =
         new("docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
@@ -152,12 +155,64 @@ public sealed class DeclaredMediaTypeTests
     }
 
     [Fact]
-    public void A_reclassified_image_declared_as_its_name_rather_than_its_content_is_refused()
+    public void A_reclassified_image_declared_as_its_name_rather_than_its_content_is_accepted_and_renamed()
     {
-        // photo.jpg, declared image/jpeg, holding a PNG: the name and the header agree with each other
-        // and both contradict the bytes. Reclassification forgives a name; it does not forgive a claim.
-        Inspect(Enforced(), "photo.jpg", "image/jpeg", Png)
-            .Reason.ShouldBe(RejectionReason.DeclaredMediaTypeMismatch);
+        // photo.jpg, declared image/jpeg, holding a PNG. This used to be refused: the claim was held to
+        // strict equality while the name was forgiven within its family. A client deriving the type
+        // from the name sends exactly this, so the claim is now forgiven the way the name is.
+        var decision = Inspect(Enforced(), "photo.jpg", "image/jpeg", Png);
+
+        decision.Reason.ShouldBe(RejectionReason.None);
+        decision.StoredNameFor("photo.jpg").ShouldBe("photo.png");
+        decision.MediaType.ShouldBe("image/png");
+    }
+
+    [Fact]
+    public void A_correctly_named_image_declared_as_a_sibling_is_accepted_unchanged()
+    {
+        var decision = Inspect(Enforced(), "photo.png", "image/jpeg", Png);
+
+        decision.Reason.ShouldBe(RejectionReason.None);
+        decision.StoredNameFor("photo.png").ShouldBe("photo.png");
+    }
+
+    [Fact]
+    public void A_bare_image_declared_as_a_sibling_is_accepted_as_what_it_is()
+    {
+        var decision = Inspect(Enforced(), "curieux", "image/png", Jpeg);
+
+        decision.Reason.ShouldBe(RejectionReason.None);
+        decision.StoredNameFor("curieux").ShouldBe("curieux.jpg");
+        decision.MediaType.ShouldBe("image/jpeg");
+    }
+
+    [Fact]
+    public void A_sibling_claim_need_not_name_an_allowed_format()
+    {
+        // gif is not in the allowlist, but nothing is stored as a gif: the claim is a wrong label within
+        // the family, and the PNG actually stored is allowed. MayStillAgree does not consult the
+        // allowlist either.
+        Inspect(Enforced(), "photo.jpg", "image/gif", Png).Reason.ShouldBe(RejectionReason.None);
+    }
+
+    [Fact]
+    public void An_image_claim_on_a_document_is_refused_named_or_bare()
+    {
+        // Across families the claim changes what the file is said to be, and it stays a mismatch.
+        Inspect(Enforced(), "curieux", "image/png", Pdf).Reason.ShouldBe(RejectionReason.DeclaredMediaTypeMismatch);
+        CheckName(Enforced(), "rapport.pdf", "image/png").Reason.ShouldBe(RejectionReason.DeclaredMediaTypeMismatch);
+    }
+
+    [Fact]
+    public void Without_a_reclassifiable_family_a_sibling_claim_is_strict_again()
+    {
+        var policy = Enforced();
+        policy.ReclassifiableGroups = [];
+
+        Inspect(policy, "curieux", "image/png", Jpeg).Reason.ShouldBe(RejectionReason.DeclaredMediaTypeMismatch);
+
+        // Named, the extension is no longer forgiven either: the content refusal comes first.
+        Inspect(policy, "photo.jpg", "image/jpeg", Png).Reason.ShouldBe(RejectionReason.ContentDoesNotMatchExtension);
     }
 
     [Fact]

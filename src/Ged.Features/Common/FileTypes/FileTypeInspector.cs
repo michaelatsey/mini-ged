@@ -241,9 +241,22 @@ public sealed partial class FileTypeInspector(
     /// here, before a byte is staged — no PDF and no reclassification can make those two agree.
     /// </remarks>
     private bool MayStillAgree(Claim claim, FileFormat named) =>
-        claim.Format is { } declared
-        && (string.Equals(declared.Name, named.Name, StringComparison.OrdinalIgnoreCase)
-            || ShareReclassifiableGroup(named, declared));
+        claim.Format is { } declared && AgreesWithinFamily(declared, named);
+
+    /// <summary>Determines whether a declared format agrees with another format, as an extension would.</summary>
+    /// <param name="declared">The format the client's media type names.</param>
+    /// <param name="format">The format it is held against — named by the extension, or accepted.</param>
+    /// <returns>True when the two are the same format, or siblings in a reclassifiable family.</returns>
+    /// <remarks>
+    /// The one rule both checks apply to a claim, and the same one <see cref="Reclassify"/> applies to an
+    /// extension: a wrong label is forgiven within a family the catalogue declares safe and the
+    /// configuration enables, never across one. A client that derives its declared type from the file
+    /// name sends nothing the name did not already say, so holding the claim to a stricter rule than
+    /// the name would refuse the very naming accident reclassification exists to accept.
+    /// </remarks>
+    private bool AgreesWithinFamily(FileFormat declared, FileFormat format) =>
+        string.Equals(declared.Name, format.Name, StringComparison.OrdinalIgnoreCase)
+        || ShareReclassifiableGroup(format, declared);
 
     /// <summary>Holds an accepted decision to the claim the client made, if it made one.</summary>
     /// <param name="decision">The content check's decision.</param>
@@ -252,9 +265,14 @@ public sealed partial class FileTypeInspector(
     /// <remarks>
     /// <para>
     /// Compared with the format finally accepted — named, reclassified, or identified from a bare
-    /// name's bytes — never with the extension. The name check can only compare with the extension,
-    /// and that misses the one case where the name and the claim agree with each other and both
-    /// contradict the bytes: <c>photo.jpg</c> declared <c>image/jpeg</c> and holding a PNG.
+    /// name's bytes — never with the extension alone. Agreement is <see cref="AgreesWithinFamily"/>:
+    /// <c>photo.jpg</c> declared <c>image/jpeg</c> and holding a PNG is accepted as <c>photo.png</c>,
+    /// as it would be with no header at all, while a bare name declared <c>image/png</c> and holding a
+    /// PDF is refused — the claim changed what the file was said to be, not just its label.
+    /// </para>
+    /// <para>
+    /// The declared format is not checked against the allowlist. Nothing is stored under it: what is
+    /// stored is the accepted format, which already passed every gate on the bytes.
     /// </para>
     /// <para>
     /// A refusal is returned as it is. Its reason already names what the content really is, which says
@@ -273,7 +291,7 @@ public sealed partial class FileTypeInspector(
             return DeclaredOutsideCatalogue();
         }
 
-        return string.Equals(claim.Format.Name, accepted.Name, StringComparison.OrdinalIgnoreCase)
+        return AgreesWithinFamily(claim.Format, accepted)
             ? decision
             : FileTypeDecision.Reject(
                 RejectionReason.DeclaredMediaTypeMismatch,
@@ -529,14 +547,21 @@ public sealed partial class FileTypeInspector(
     }
 
     /// <summary>Determines whether two formats sit in one family a swap is allowed within.</summary>
-    /// <param name="first">The format the extension claimed.</param>
-    /// <param name="second">The format the content is.</param>
+    /// <param name="first">One of the two formats.</param>
+    /// <param name="second">The other.</param>
     /// <returns>True when a configured, eligible family holds both.</returns>
     /// <remarks>
+    /// <para>
+    /// Symmetric, so callers pass the two formats in whichever order reads best: the extension's and
+    /// the content's for <see cref="Reclassify"/>, a declared format and the one it is held against for
+    /// <see cref="AgreesWithinFamily"/>.
+    /// </para>
+    /// <para>
     /// Eligibility is re-read here and not only at startup. The configured list is validated when the
     /// options are bound, but the code-side list and the executable-content rule are what make a
     /// family safe, and a family that stopped being either must stop reclassifying — not keep going
     /// because an old configuration still names it.
+    /// </para>
     /// </remarks>
     private bool ShareReclassifiableGroup(FileFormat first, FileFormat second)
     {
