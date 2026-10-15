@@ -143,9 +143,10 @@ reclassifiable family
   `application/x-pdf` — because each one widens what a claim may be and still agree. Adding one is a
   reviewed edit to `FileFormats`, with its source.
 - **Never recorded.** What is stored, and served back, is the detected format's media type.
-- **Always logged when it disagrees.** Every claim that does not name the file's format leaves event
-  2003, with the flag on or off, corrected or refused — the evidence for deciding whether to turn the
-  flag on. `docs/logging.md` lists its fields.
+- **Logged when it disagrees.** A claim that does not name the format the file is accepted as, or
+  that the name check refuses it against, leaves event 2003 — with the flag on or off, corrected or
+  refused. A file refused for its own content leaves none: it never became a format to disagree with.
+  It is the evidence for deciding whether to turn the flag on; `docs/logging.md` lists its fields.
 
 ### One image under another image's extension
 
