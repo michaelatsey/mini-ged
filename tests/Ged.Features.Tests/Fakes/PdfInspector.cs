@@ -15,6 +15,7 @@ internal sealed class PdfInspector : IFileTypeInspector
 
     public FileTypeDecision Inspect(
         string fileName,
+        string? declaredMediaType,
         long sizeBytes,
         ReadOnlySpan<byte> header,
         Func<Stream> openContent,

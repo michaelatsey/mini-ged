@@ -7,11 +7,15 @@ namespace Ged.Features.Documents.AddDocumentVersion;
 /// <summary>Appends a new content version to an existing document.</summary>
 /// <param name="DocumentId">The document.</param>
 /// <param name="FileName">The file name as supplied by the client.</param>
+/// <param name="DeclaredMediaType">
+/// The media type the client declared, or null. Compared with the content when the policy holds clients
+/// to it; never recorded.
+/// </param>
 /// <param name="Comment">An optional note describing the change.</param>
 /// <param name="Content">The bytes. Read once, forward-only.</param>
 /// <param name="By">The acting identity.</param>
 public sealed record AddDocumentVersionCommand(
-    Guid DocumentId, string FileName, string? Comment, Stream Content, string By);
+    Guid DocumentId, string FileName, string? DeclaredMediaType, string? Comment, Stream Content, string By);
 
 /// <summary>What the caller gets back after appending a version.</summary>
 /// <param name="VersionId">The new version.</param>
@@ -63,7 +67,7 @@ public sealed class AddDocumentVersionHandler(
 
         // The ceiling is resolved from the extension before a byte is read, so an oversized upload
         // stops at the limit instead of being written to disk in full and refused afterwards.
-        var byName = fileTypes.CheckName(command.FileName, declaredMediaType: null, document.Type.Code);
+        var byName = fileTypes.CheckName(command.FileName, command.DeclaredMediaType, document.Type.Code);
 
         if (!byName.Accepted)
         {
@@ -84,7 +88,8 @@ public sealed class AddDocumentVersionHandler(
         await using var _ = staged;
 
         var decision = fileTypes.Inspect(
-            command.FileName, staged.SizeBytes, staged.Header, staged.OpenRead, document.Type.Code);
+            command.FileName, command.DeclaredMediaType, staged.SizeBytes, staged.Header, staged.OpenRead,
+            document.Type.Code);
 
         if (!decision.Accepted)
         {

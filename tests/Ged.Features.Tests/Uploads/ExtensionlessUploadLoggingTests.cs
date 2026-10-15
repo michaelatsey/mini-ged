@@ -98,6 +98,50 @@ public sealed class ExtensionlessUploadLoggingTests
     }
 
     [Fact]
+    public void A_bare_name_declared_outside_the_catalogue_is_logged_at_the_name_check()
+    {
+        var logger = new RecordingLogger<FileTypeInspector>();
+        var policy = Policy();
+        policy.EnforceDeclaredMediaType = true;
+
+        Inspector(policy, Pdf, logger).CheckName("rapport", "text/html", null);
+
+        var entry = logger.Entries.ShouldHaveSingleItem();
+        entry.EventId.Id.ShouldBe(Refused);
+        entry.Fields["Reason"].ShouldBe(nameof(RejectionReason.DeclaredMediaTypeMismatch));
+        entry.Fields["Stage"].ShouldBe("name");
+        entry.Fields["SizeBytes"].ShouldBeNull();
+        entry.Fields["DetectedFormat"].ShouldBeNull();
+    }
+
+    [Fact]
+    public void A_bare_upload_its_content_contradicts_is_logged_once_at_the_content_check()
+    {
+        var logger = new RecordingLogger<FileTypeInspector>();
+        var policy = Policy();
+        policy.EnforceDeclaredMediaType = true;
+        var inspector = Inspector(policy, Pdf, logger);
+
+        inspector.CheckName("rapport", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", null)
+            .Reason.ShouldBe(RejectionReason.None);
+
+        inspector.Inspect(
+            "rapport",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            4096,
+            [],
+            () => new MemoryStream([1, 2, 3]),
+            docType: null);
+
+        var entry = logger.Entries.ShouldHaveSingleItem();
+        entry.EventId.Id.ShouldBe(Refused);
+        entry.Fields["Reason"].ShouldBe(nameof(RejectionReason.DeclaredMediaTypeMismatch));
+        entry.Fields["Stage"].ShouldBe("content");
+        entry.Fields["DetectedFormat"].ShouldBe("pdf");
+        entry.Fields["SizeBytes"].ShouldBe(4096L);
+    }
+
+    [Fact]
     public void A_bare_name_passing_the_name_check_is_not_logged_there()
     {
         // Logged once, by the content check, when there is an outcome to record.
@@ -162,7 +206,7 @@ public sealed class ExtensionlessUploadLoggingTests
 
         await using var content = Content.Open();
 
-        (await handler.HandleAsync(new UploadDocumentCommand(target.Id.Value, "rapport", null, content, Fixed.By)))
+        (await handler.HandleAsync(new UploadDocumentCommand(target.Id.Value, "rapport", null, null, content, Fixed.By)))
             .Succeeded.ShouldBeTrue();
 
         logger.Entries.ShouldHaveSingleItem().EventId.Id.ShouldBe(Accepted);
@@ -196,5 +240,5 @@ public sealed class ExtensionlessUploadLoggingTests
         new(new StubDetector(detected), Options.Create(policy), logger);
 
     private static FileTypeDecision Inspect(FileTypeInspector inspector, string fileName, long sizeBytes) =>
-        inspector.Inspect(fileName, sizeBytes, [], () => new MemoryStream([1, 2, 3]), docType: null);
+        inspector.Inspect(fileName, declaredMediaType: null, sizeBytes, [], () => new MemoryStream([1, 2, 3]), docType: null);
 }

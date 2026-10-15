@@ -89,7 +89,7 @@ public sealed class UploadDocumentHandlerTests
             await using var content = Content.Open();
 
             var outcome = await Handler.HandleAsync(new UploadDocumentCommand(
-                Target.Id.Value, "invoice.pdf", null, content, Fixed.By));
+                Target.Id.Value, "invoice.pdf", null, null, content, Fixed.By));
 
             return outcome;
         }
