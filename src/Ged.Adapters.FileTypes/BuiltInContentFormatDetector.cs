@@ -375,6 +375,11 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
     /// legitimately be called <c>document2.xml</c>, which defeats a check built on names alone.
     /// </para>
     /// <para>
+    /// A part's content type is the one OPC gives it: the <c>Override</c> naming the part, or failing
+    /// that the <c>Default</c> for its extension. The main part is the entry whose type that makes a
+    /// main-part type — see <see cref="ResolveOfficeFamily"/>.
+    /// </para>
+    /// <para>
     /// Any VBA signal — a macro-enabled content type, the VBA project's content type, or a part named
     /// <c>vbaProject.bin</c> — turns the answer into its macro-enabled twin. That is stricter than
     /// Office, which ignores a VBA part under a macro-free content type, and it is deliberate.
@@ -440,9 +445,11 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
     /// extensions are compared without case, as OPC compares them.
     /// </para>
     /// <para>
-    /// Two declarations for one key that disagree are an invalid manifest, not a choice to make:
-    /// whichever was picked, the other reading names a different document. Two main parts from
-    /// different families do not make a document anyone can name either. Both answer null.
+    /// Two declarations for one key that disagree are an invalid manifest. Where one of them is a
+    /// main-part type there is no choice to make — whichever was picked, the other reading names a
+    /// different document — so the answer is null. Elsewhere the key types nothing, and a valid
+    /// document is not refused over a malformed declaration that cannot change what it is. Two main
+    /// parts from different families do not make a document anyone can name either, and answer null.
     /// </para>
     /// <para>
     /// The declarations are indexed once. A manifest may declare as many overrides as the archive has
@@ -454,21 +461,22 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
         List<ZipEntryRecord> entries,
         List<ContentTypeDeclaration> contentTypes)
     {
-        var overrides = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var defaults = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        // A key declared twice with different types maps to null: it types nothing.
+        var overrides = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        var defaults = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
 
         foreach (ContentTypeDeclaration declaration in contentTypes)
         {
             string mediaType = MediaTypeOf(declaration.ContentType);
 
-            bool consistent = declaration switch
+            bool decidable = declaration switch
             {
-                { PartName: { } partName } => AddConsistently(overrides, partName, mediaType),
-                { Extension: { } extension } => AddConsistently(defaults, extension, mediaType),
+                { PartName: { } partName } => Declare(overrides, partName, mediaType),
+                { Extension: { } extension } => Declare(defaults, extension, mediaType),
                 _ => true,  // no key, so it types no part
             };
 
-            if (!consistent)
+            if (!decidable)
             {
                 return null;
             }
@@ -497,23 +505,43 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
 
         string? EffectiveContentType(string entryName)
         {
+            // An override found wins even when it is ambiguous: falling back to the default would type
+            // the part with a declaration the manifest overrode.
             if (overrides.TryGetValue("/" + entryName, out string? declared))
             {
                 return declared;
             }
 
-            // The extension is the last segment's, after its last dot; a segment with no dot has none.
+            // The extension is the last segment's, after its last dot — ".rels" has the extension
+            // "rels", as OPC's own example has it. A segment with no dot has none.
             int segment = entryName.LastIndexOf('/') + 1;
             int dot = entryName.LastIndexOf('.');
 
-            return dot > segment && defaults.TryGetValue(entryName[(dot + 1)..], out declared)
+            return dot >= segment && defaults.TryGetValue(entryName[(dot + 1)..], out declared)
                 ? declared
                 : null;
         }
 
-        static bool AddConsistently(Dictionary<string, string> declarations, string key, string mediaType) =>
-            declarations.TryAdd(key, mediaType)
-            || string.Equals(declarations[key], mediaType, StringComparison.OrdinalIgnoreCase);
+        // False when the key now carries two types and one of them could make a main part.
+        static bool Declare(Dictionary<string, string?> declarations, string key, string mediaType)
+        {
+            if (declarations.TryAdd(key, mediaType))
+            {
+                return true;
+            }
+
+            string? existing = declarations[key];
+
+            if (existing is not null && string.Equals(existing, mediaType, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            declarations[key] = null;
+
+            return !MainPartTypes.ContainsKey(mediaType)
+                && (existing is null || !MainPartTypes.ContainsKey(existing));
+        }
     }
 
     /// <summary>A content type as a media type: parameters dropped, surrounding blanks trimmed.</summary>

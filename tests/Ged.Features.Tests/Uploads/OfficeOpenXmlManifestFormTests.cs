@@ -45,7 +45,11 @@ public sealed class OfficeOpenXmlManifestFormTests
     private const string WordMain = "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml";
     private const string ExcelMain = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml";
     private const string PowerPointMain = "application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml";
+    private const string WordMacroMain = "application/vnd.ms-word.document.macroEnabled.main+xml";
     private const string ExcelMacroMain = "application/vnd.ms-excel.sheet.macroEnabled.main+xml";
+    private const string PowerPointMacroMain = "application/vnd.ms-powerpoint.presentation.macroEnabled.main+xml";
+
+    private const string ExtendedProperties = "application/vnd.openxmlformats-officedocument.extended-properties+xml";
 
     private const string Xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><root/>";
 
@@ -83,10 +87,14 @@ public sealed class OfficeOpenXmlManifestFormTests
         Detect(bytes).Extension.ShouldBe("xlsx");
     }
 
-    [Fact]
-    public void A_macro_enabled_main_type_given_by_a_default_is_reported_as_macro_enabled()
+    [Theory]
+    [InlineData("word/document.xml", WordMacroMain, "docm")]
+    [InlineData("xl/workbook.xml", ExcelMacroMain, "xlsm")]
+    [InlineData("ppt/presentation.xml", PowerPointMacroMain, "pptm")]
+    public void A_macro_enabled_main_type_given_by_a_default_is_reported_as_macro_enabled(
+        string mainPart, string contentType, string expected)
     {
-        Detect(Package("xl/workbook.xml", ExcelMacroMain, ManifestForm.Default)).Extension.ShouldBe("xlsm");
+        Detect(Package(mainPart, contentType, ManifestForm.Default)).Extension.ShouldBe(expected);
     }
 
     [Fact]
@@ -114,6 +122,54 @@ public sealed class OfficeOpenXmlManifestFormTests
             ("[Content_Types].xml", manifest),
             ("word/document.xml", Xml),
             ("xl/workbook.xml", Xml));
+
+        Detect(bytes).Extension.ShouldBe("zip");
+    }
+
+    [Fact]
+    public void A_part_with_an_override_is_not_typed_by_the_default()
+    {
+        // The Default would make every .xml part a Word main part. docProps/app.xml has its own,
+        // non-main override, so the only main part is the workbook the other override names. A rule
+        // that let the default reach an overridden part would find two families and answer zip.
+        var manifest = Manifest(
+            "<Default Extension=\"xml\" ContentType=\"" + WordMain + "\"/>"
+            + "<Override PartName=\"/xl/workbook.xml\" ContentType=\"" + ExcelMain + "\"/>"
+            + "<Override PartName=\"/docProps/app.xml\" ContentType=\"" + ExtendedProperties + "\"/>");
+
+        var bytes = Zip(
+            ("[Content_Types].xml", manifest),
+            ("docProps/app.xml", Xml),
+            ("xl/workbook.xml", Xml));
+
+        Detect(bytes).Extension.ShouldBe("xlsx");
+    }
+
+    [Fact]
+    public void A_conflicting_declaration_that_types_no_main_part_does_not_refuse_the_document()
+    {
+        // Invalid OPC, but it cannot change what the package is: the key simply types nothing.
+        var bytes = Package(
+            "word/document.xml",
+            WordMain,
+            ManifestForm.Override,
+            extraDeclarations:
+                "<Default Extension=\"png\" ContentType=\"image/png\"/>"
+                + "<Default Extension=\"png\" ContentType=\"image/jpeg\"/>",
+            extraEntries: [("word/media/image1.png", "png")]);
+
+        Detect(bytes).Extension.ShouldBe("docx");
+    }
+
+    [Fact]
+    public void A_conflicting_declaration_of_a_main_type_names_no_document()
+    {
+        // The workbook is a main part under one reading and not under the other.
+        var bytes = Package(
+            "xl/workbook.xml",
+            ExcelMain,
+            ManifestForm.Override,
+            extraDeclarations: "<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/xml\"/>");
 
         Detect(bytes).Extension.ShouldBe("zip");
     }
@@ -163,8 +219,8 @@ public sealed class OfficeOpenXmlManifestFormTests
         new BuiltInContentFormatDetector().Detect(new MemoryStream(bytes, writable: false)).ShouldNotBeNull();
 
     /// <summary>
-    /// A package with its main part, plus a second XML part typed by its own override — as a real
-    /// package carries — so that "every part is the main part" cannot pass for the rule.
+    /// A package with its main part, plus the relationships part and a second XML part typed by its
+    /// own override, as a real package carries them.
     /// </summary>
     private static byte[] Package(
         string mainPart,
@@ -172,6 +228,7 @@ public sealed class OfficeOpenXmlManifestFormTests
         ManifestForm form,
         string defaultExtension = "xml",
         string? overridePartName = null,
+        string extraDeclarations = "",
         (string Name, string Content)[]? extraEntries = null)
     {
         var declarations = new StringBuilder();
@@ -187,8 +244,8 @@ public sealed class OfficeOpenXmlManifestFormTests
                 + "\" ContentType=\"" + contentType + "\"/>");
         }
 
-        declarations.Append("<Override PartName=\"/docProps/app.xml\" "
-            + "ContentType=\"application/vnd.openxmlformats-officedocument.extended-properties+xml\"/>");
+        declarations.Append("<Override PartName=\"/docProps/app.xml\" ContentType=\"" + ExtendedProperties + "\"/>");
+        declarations.Append(extraDeclarations);
 
         var entries = new List<(string Name, string Content)>
         {
