@@ -151,10 +151,17 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
 
     /// <summary>Main-part content types, by the family each one identifies.</summary>
     /// <remarks>
+    /// <para>
     /// Templates, slideshows and add-ins are absent deliberately: they fall back to a plain ZIP and
     /// are refused as one, rather than being reported as the document type they resemble.
+    /// </para>
+    /// <para>
+    /// Keys are compared without case, because a media type's type and subtype are case-insensitive:
+    /// a producer writing <c>MacroEnabled</c> declares the same type as one writing
+    /// <c>macroEnabled</c>. Parameters are stripped before the lookup, by <see cref="MediaTypeOf"/>.
+    /// </para>
     /// </remarks>
-    private static readonly Dictionary<string, OfficeFamily> MainPartTypes = new(StringComparer.Ordinal)
+    private static readonly Dictionary<string, OfficeFamily> MainPartTypes = new(StringComparer.OrdinalIgnoreCase)
     {
         ["application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"] = OfficeFamily.Word,
         ["application/vnd.ms-word.document.macroEnabled.main+xml"] = OfficeFamily.Word,
@@ -373,9 +380,8 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
     /// Office, which ignores a VBA part under a macro-free content type, and it is deliberate.
     /// </para>
     /// <para>
-    /// Part names are indexed once before the loop. A manifest may declare as many overrides as the
-    /// archive has entries, and confirming each one by scanning the list made identification quadratic
-    /// on a large package.
+    /// The macro check reads every declaration, defaults included: a default typing every
+    /// <c>.xml</c> part as macro-enabled is a macro-enabled main part as surely as an override is.
     /// </para>
     /// </remarks>
     private static DetectedFormat? DetectOfficeOpenXml(Stream content, List<ZipEntryRecord> entries)
@@ -396,7 +402,7 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
 
         bool hasMacros = contentTypes.Exists(
                 t => t.ContentType.Contains("macroEnabled", StringComparison.OrdinalIgnoreCase)
-                     || t.ContentType.Equals("application/vnd.ms-office.vbaProject", StringComparison.OrdinalIgnoreCase))
+                     || MediaTypeOf(t.ContentType).Equals("application/vnd.ms-office.vbaProject", StringComparison.OrdinalIgnoreCase))
             || entries.Exists(e => e.Name.EndsWith("vbaProject.bin", StringComparison.OrdinalIgnoreCase));
 
         return (resolved, hasMacros) switch
@@ -419,26 +425,62 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
 
     /// <summary>Resolves the Office family the manifest declares, or null when none is.</summary>
     /// <remarks>
-    /// A main part the manifest names but the archive does not hold proves nothing, and two main parts
-    /// from different families do not make a document anyone can name.
+    /// <para>
+    /// Each part of the archive is given its content type the way OPC (ECMA-376 Part 2) defines it:
+    /// the <c>Override</c> naming it, or failing that the <c>Default</c> for its extension. Both forms
+    /// are valid and both occur — Office writes an override for the main part, a package written
+    /// through <c>System.IO.Packaging</c> may type it with <c>Default Extension="xml"</c> alone.
+    /// Reading overrides only recognised one producer's habit rather than the format, and refused a
+    /// valid workbook as a plain ZIP (#48).
+    /// </para>
+    /// <para>
+    /// The rule is resolved from the archive's entries, not from the manifest's declarations, so a
+    /// main part the manifest names but the archive does not hold still proves nothing. The manifest
+    /// itself is not a part, so a default for <c>xml</c> cannot make it one. Part names and
+    /// extensions are compared without case, as OPC compares them.
+    /// </para>
+    /// <para>
+    /// Two declarations for one key that disagree are an invalid manifest, not a choice to make:
+    /// whichever was picked, the other reading names a different document. Two main parts from
+    /// different families do not make a document anyone can name either. Both answer null.
+    /// </para>
+    /// <para>
+    /// The declarations are indexed once. A manifest may declare as many overrides as the archive has
+    /// entries, and confirming each one by scanning the list made identification quadratic on a large
+    /// package.
+    /// </para>
     /// </remarks>
     private static OfficeFamily? ResolveOfficeFamily(
         List<ZipEntryRecord> entries,
-        List<(string? PartName, string ContentType)> contentTypes)
+        List<ContentTypeDeclaration> contentTypes)
     {
-        HashSet<string>? partNames = null;
+        var overrides = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var defaults = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (ContentTypeDeclaration declaration in contentTypes)
+        {
+            string mediaType = MediaTypeOf(declaration.ContentType);
+
+            bool consistent = declaration switch
+            {
+                { PartName: { } partName } => AddConsistently(overrides, partName, mediaType),
+                { Extension: { } extension } => AddConsistently(defaults, extension, mediaType),
+                _ => true,  // no key, so it types no part
+            };
+
+            if (!consistent)
+            {
+                return null;
+            }
+        }
+
         OfficeFamily? family = null;
 
-        foreach ((string? partName, string contentType) in contentTypes)
+        foreach (ZipEntryRecord entry in entries)
         {
-            if (partName is null || !MainPartTypes.TryGetValue(contentType, out OfficeFamily found))
-            {
-                continue;
-            }
-
-            partNames ??= BuildPartNames(entries);
-
-            if (!partNames.Contains(partName))
+            if (entry.Name == ManifestName
+                || EffectiveContentType(entry.Name) is not { } contentType
+                || !MainPartTypes.TryGetValue(contentType, out OfficeFamily found))
             {
                 continue;
             }
@@ -453,17 +495,37 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
 
         return family;
 
-        static HashSet<string> BuildPartNames(List<ZipEntryRecord> entries)
+        string? EffectiveContentType(string entryName)
         {
-            var names = new HashSet<string>(entries.Count, StringComparer.OrdinalIgnoreCase);
-
-            foreach (ZipEntryRecord entry in entries)
+            if (overrides.TryGetValue("/" + entryName, out string? declared))
             {
-                names.Add("/" + entry.Name);
+                return declared;
             }
 
-            return names;
+            // The extension is the last segment's, after its last dot; a segment with no dot has none.
+            int segment = entryName.LastIndexOf('/') + 1;
+            int dot = entryName.LastIndexOf('.');
+
+            return dot > segment && defaults.TryGetValue(entryName[(dot + 1)..], out declared)
+                ? declared
+                : null;
         }
+
+        static bool AddConsistently(Dictionary<string, string> declarations, string key, string mediaType) =>
+            declarations.TryAdd(key, mediaType)
+            || string.Equals(declarations[key], mediaType, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>A content type as a media type: parameters dropped, surrounding blanks trimmed.</summary>
+    /// <remarks>
+    /// Comparison is left to the caller, without case, since a media type's type and subtype are
+    /// case-insensitive. Parameters carry nothing a main-part type depends on.
+    /// </remarks>
+    private static string MediaTypeOf(string contentType)
+    {
+        int parameters = contentType.IndexOf(';', StringComparison.Ordinal);
+
+        return (parameters < 0 ? contentType : contentType[..parameters]).Trim();
     }
 
     /// <summary>Reads the central directory, or returns null when it cannot be trusted.</summary>
@@ -801,13 +863,13 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
         return default;
     }
 
-    /// <summary>Reads the manifest's declarations — part name for overrides, content type for all.</summary>
+    /// <summary>Reads the manifest's declarations — part name for overrides, extension for defaults.</summary>
     /// <remarks>
     /// Decompression is bounded on the output, not on the declared size: a declared size is written by
     /// whoever built the file. The XML reader prohibits DTDs and resolves nothing, so no entity can
     /// expand and no external resource can be fetched.
     /// </remarks>
-    private static List<(string? PartName, string ContentType)>? ReadManifest(Stream content, ZipEntryRecord manifest)
+    private static List<ContentTypeDeclaration>? ReadManifest(Stream content, ZipEntryRecord manifest)
     {
         if ((manifest.Flags & EncryptedFlag) != 0
             || manifest.Method is not (Stored or Deflated)
@@ -847,8 +909,8 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
         return xml.Length == manifest.UncompressedSize ? ReadContentTypes(xml) : null;
     }
 
-    /// <summary>Extracts the (part, content type) pairs from the already inflated manifest.</summary>
-    private static List<(string? PartName, string ContentType)>? ReadContentTypes(byte[] xml)
+    /// <summary>Extracts the declarations from the already inflated manifest.</summary>
+    private static List<ContentTypeDeclaration>? ReadContentTypes(byte[] xml)
     {
         var settings = new XmlReaderSettings
         {
@@ -859,7 +921,7 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
             IgnoreProcessingInstructions = true,
         };
 
-        var contentTypes = new List<(string? PartName, string ContentType)>();
+        var contentTypes = new List<ContentTypeDeclaration>();
 
         try
         {
@@ -867,11 +929,21 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
 
             while (reader.Read())
             {
-                if (reader.NodeType == XmlNodeType.Element
-                    && reader.LocalName is "Default" or "Override"
-                    && reader.GetAttribute("ContentType") is { } contentType)
+                if (reader.NodeType != XmlNodeType.Element
+                    || reader.GetAttribute("ContentType") is not { } contentType)
                 {
-                    contentTypes.Add((reader.GetAttribute("PartName"), contentType));
+                    continue;
+                }
+
+                // A declaration missing its key is kept: it types no part, but the macro check still
+                // reads its content type, as it always has.
+                if (reader.LocalName == "Override")
+                {
+                    contentTypes.Add(new(reader.GetAttribute("PartName"), Extension: null, contentType));
+                }
+                else if (reader.LocalName == "Default")
+                {
+                    contentTypes.Add(new(PartName: null, reader.GetAttribute("Extension"), contentType));
                 }
             }
         }
@@ -1166,6 +1238,12 @@ public sealed class BuiltInContentFormatDetector : IContentFormatDetector
             ? BinaryPrimitives.ReadUInt32LittleEndian(slot)
             : null;
     }
+
+    /// <summary>One <c>Default</c> or <c>Override</c> of the content-types manifest.</summary>
+    /// <param name="PartName">The part an override types; null for a default, or an override missing it.</param>
+    /// <param name="Extension">The extension a default types; null for an override, or a default missing it.</param>
+    /// <param name="ContentType">The declared content type, as written.</param>
+    private sealed record ContentTypeDeclaration(string? PartName, string? Extension, string ContentType);
 
     /// <summary>What the central directory states about an entry — the only facts identification needs.</summary>
     private sealed record ZipEntryRecord(
