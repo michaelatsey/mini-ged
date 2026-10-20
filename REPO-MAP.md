@@ -1,6 +1,6 @@
 # REPO MAP — mini-ged
 
-Generated 2026-10-15 from commit `46e726f`.
+Generated 2026-10-20 from commit `8137ea3`.
 Regenerate with `./scripts/repo-map.sh` — never edit by hand.
 
 ---
@@ -21,7 +21,7 @@ MicroKit.Persistence                           7 files     478 lines
 MicroKit.Result.AspNetCore                     2 files     135 lines
 MicroKit.Result                               29 files    2726 lines
 Ged.Adapters.FileTypes.FileSignatures          2 files      77 lines
-Ged.Adapters.FileTypes                         2 files    1217 lines
+Ged.Adapters.FileTypes                         2 files    1323 lines
 Ged.Adapters.Persistence.PostgreSql            3 files     152 lines
 Ged.Adapters.Persistence.SqlServer             3 files     161 lines
 Ged.Adapters.Persistence                      20 files    1132 lines
@@ -29,10 +29,10 @@ Ged.Adapters.Storage.FileSystem                2 files     204 lines
 Ged.Adapters.Storage                           2 files      99 lines
 Ged.Core                                       9 files     275 lines
 Ged.Domain                                    51 files    2574 lines
-Ged.Features                                  48 files    4029 lines
+Ged.Features                                  48 files    4185 lines
 Ged.Api.Tests                                  2 files     101 lines
 Ged.Domain.Tests                              10 files     850 lines
-Ged.Features.Tests                            27 files    3075 lines
+Ged.Features.Tests                            29 files    3738 lines
 ```
 
 ## Reference graph
@@ -269,16 +269,16 @@ src/Ged.Adapters.FileTypes/registration.md ```csharp
 ## Recent history
 
 ```
+8137ea3 docs(uploads): describe OOXML detection as the code does it
+bed527e fix(filetypes): refuse a duplicate declaration only where it decides the family
+60c4eaa fix(filetypes): detect an OOXML package whose main part is typed by a Default
+23f6de1 test(filetypes): build OOXML packages in every manifest form
+4f67f39 test(logging): pin the 2003 entries of uploads with no extension
+0ca0cb3 feat(logging): record every declared media type that disagrees with the file
+4b4853a feat(uploads): correct a declared media type within a reclassifiable family
+2ab929f chore: regenerate REPO-MAP.md
 46e726f feat(uploads): check the declared media type against the detected format
 46fe8c9 refactor(logging): drop the IsEnabled guard nothing could verify
 ecd3704 docs(logging): state which bare uploads leave no entry
 5bbede5 feat(logging): write JSON logs and record every extensionless upload
-e418522 feat(uploads): accept a file name with no extension, behind a flag
-3232a87 docs(tests): stop StubDetector claiming the detectors have tests
-38004a7 docs: show where the TIFF ceiling comes from, and report the real test counts
-8a4e988 chore: regenerate REPO-MAP.md
-78c03e3 docs(filetypes): translate BuiltInContentFormatDetector comments to English
-54d9934 chore(persistence): remove the duplicate DetectedFormat declaration
-069b8bf feat(uploads): accept an image under another image's extension
-0ab2d0f fix(blobs): report "no previous location" as null, not Guid.Empty (#31)
 ```
