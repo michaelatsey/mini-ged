@@ -263,7 +263,7 @@ That is why the flag is off by default.
 | Forged `Content-Type: application/pdf` | the header is never evidence |
 | Executable renamed `notes.txt` | text has no signature, but a NUL byte contradicts it |
 | `.jar` renamed `.docx` | archive lacks `[Content_Types].xml` |
-| `.xlsx` renamed `.docx` | archive has no `word/` part — still refused, whatever is reclassifiable |
+| `.xlsx` renamed `.docx` | its main part is a workbook, not a document — still refused, whatever is reclassifiable |
 | Empty file | refused before anything else |
 | PNG renamed `photo.jpg` | **nothing**, where `images` is reclassifiable: accepted as a PNG, stored as `photo.png` |
 | PDF named `rapport` | **nothing**, where `AllowMissingExtension` is on: accepted as a PDF, stored as `rapport.pdf` |
@@ -281,7 +281,7 @@ identify a *container* and not a document.
 
 | Container | Signature | Also used by | Decided by |
 |---|---|---|---|
-| ZIP (OOXML) | `PK\x03\x04` | .zip, .jar, .apk, ODF | part prefix: `word/`, `xl/`, `ppt/` |
+| ZIP (OOXML) | `PK\x03\x04` | .zip, .jar, .apk, ODF | the main part's content type, from `[Content_Types].xml` |
 | ZIP (OpenDocument) | `PK\x03\x04` | as above | the exact `mimetype` entry |
 | OLE2 (legacy Office) | `D0 CF 11 E0` | **.msi**, .msg, older formats | directory stream name |
 
@@ -327,12 +327,48 @@ It is an argument for knowing what was accepted:
 `docx`, `xlsx`, `pptx`, `zip`, `jar` and `apk` all begin with `PK\x03\x04`. The signature says "this
 is a ZIP" and nothing more.
 
-So for those formats the archive is opened read-only and two things are required: the
-`[Content_Types].xml` manifest, and a part under the prefix that identifies the flavour — `word/`,
-`xl/`, `ppt/`.
+So for those formats the archive is opened read-only, and the flavour comes from the
+`[Content_Types].xml` manifest: the archive must hold a **main part** — one entry whose content type
+is a document, a workbook or a presentation — and only one family of them.
 
-Only entry names are read; nothing is decompressed, so a zip bomb costs nothing here. Any failure to
-parse is a refusal rather than an exception reaching the caller.
+```
+part's content type   the Override naming it
+                      else the Default for its extension
+                      (part names and extensions compared without case, as OPC does)
+
+main part             an entry of the archive whose content type is a main-part type
+answer                docx / xlsx / pptx — or zip when there is none, or two families
+```
+
+Both forms of declaration are valid OPC, and both occur. Office writes an `Override` for
+`/xl/workbook.xml`; a package written through `System.IO.Packaging` may type it with
+`Default Extension="xml"` alone. Reading only the first form refused a valid workbook as a plain ZIP
+(#48) — a detector that recognises one producer's habit rather than the format refuses the other
+producers, and its message blames the file.
+
+The part names say nothing. The main part may legitimately be called `document2.xml`, and a check
+built on `word/`, `xl/` or `ppt/` would accept any archive holding a folder of that name.
+
+Any macro signal — a macro-enabled content type, the VBA project's content type, a `vbaProject.bin`
+entry — turns the answer into `docm`, `xlsm` or `pptm`. None of the three is in the catalogue, so a
+macro-enabled document is refused under a `.docx` name too. That is stricter than Office, which
+ignores a VBA part under a macro-free content type, and it is deliberate.
+
+What it costs, bounded at each step:
+
+- **The central directory**, read directly rather than through `ZipArchive`, which materialises every
+  entry before answering. At most 10,000 entries.
+- **The manifest, and nothing else, is decompressed**, and capped at 256 KiB of output — the size the
+  entry declares is written by whoever built the file, so it is not the bound. The XML reader
+  prohibits DTDs and resolves nothing.
+- **No part's content is read.** A zip bomb in any other entry costs nothing here.
+
+Any failure to parse is a refusal rather than an exception reaching the caller: a structural doubt
+answers `zip`, and `zip` is a format no policy accepts.
+
+This identifies the flavour a package declares. It does not validate its structure: a forged
+archive with a manifest typing one `.xml` entry as a workbook is detected as `xlsx`, exactly as a
+file beginning with `%PDF` is detected as a PDF.
 
 ## What this does not do
 
@@ -369,5 +405,5 @@ The body is a problem document carrying a `code` extension and a message safe to
 ## Cost
 
 The header is captured during the single pass that already computes the SHA-256, so recognising a
-format costs no additional read. Only the OOXML case opens the staged file a second time, and only
-to list entry names.
+format costs no additional read. Only the OOXML case opens the staged file a second time, to read
+the central directory and the manifest, within the bounds above.
