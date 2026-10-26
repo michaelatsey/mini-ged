@@ -760,22 +760,22 @@ public sealed partial class FileTypeInspector(
         }
     }
 
-    /// <summary>Returns the last extension of a name, lowercase and without its dot.</summary>
+    /// <summary>Returns the extension a name claims, lowercase and without its dot, or an empty string.</summary>
     /// <remarks>
+    /// <para>
     /// The last one, deliberately. <c>invoice.pdf.exe</c> is an executable, and reading anything but
     /// the final segment is how that file gets treated as a PDF.
+    /// </para>
+    /// <para>
+    /// And only when it looks like one: 1 to 10 ASCII letters or digits, at least one of them a letter.
+    /// A name a client shortened as <c>servic(...) - du 01_01_2026</c>, or <c>rapport v1.2</c>, holds a
+    /// dot that introduces nothing; reading what follows as an extension refused it as
+    /// <c>ExtensionNotAllowed</c> before its content was ever looked at. Such a name is extensionless,
+    /// and goes where any bare name goes. The rule lives in <see cref="FileExtension"/>, shared with
+    /// <see cref="FileTypeDecision.StoredNameFor"/>, so the name read here is the name corrected there.
+    /// </para>
     /// </remarks>
-    private static string ExtensionOf(string fileName)
-    {
-        if (string.IsNullOrWhiteSpace(fileName))
-        {
-            return string.Empty;
-        }
-
-        var extension = Path.GetExtension(fileName);
-
-        return extension.Length > 1 ? extension[1..].ToLowerInvariant() : string.Empty;
-    }
+    private static string ExtensionOf(string fileName) => FileExtension.Of(fileName);
 
     private long CeilingFor(FileFormat format) =>
         _policy.MaxSizeByFormat.TryGetValue(format.Name, out var perFormat)

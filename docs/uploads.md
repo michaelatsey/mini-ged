@@ -223,6 +223,25 @@ extension to apply to. The content decides, and the stored name takes the detect
 extension: `rapport` becomes `rapport.pdf`, and so does `rapport.`. A file with no extension opens in
 nothing, so leaving it unnamed would only move the problem to the download.
 
+"No extension" is decided by one rule, not by the presence of a dot. What follows the **last** dot is
+an extension only if it is 1 to 10 ASCII letters or digits, at least one of them a letter:
+
+| Name | Extension read | Stored as, once accepted |
+|---|---|---|
+| `invoice.pdf.exe` | `exe` | refused — not in the allowlist |
+| `photo.jpg` | `jpg` | `photo.png`, when it holds a PNG |
+| `rapport v1.2` | none — `2` has no letter | `rapport v1.2.pdf` |
+| `Bilan … servic(...) - du 01_01_2026` | none — spaces and punctuation | `Bilan … servic(...) - du 01_01_2026.xlsx` |
+| `rapport.` | none — nothing follows the dot | `rapport.pdf` |
+
+The letter is what tells a version or a year from an extension; every extension in the catalogue has
+one, and none is longer than four characters. The same rule decides what the stored name replaces: a
+plausible extension is replaced, anything else is kept and the extension appended. Cutting at the last
+dot whatever follows it — `Path.ChangeExtension` — would store `rapport v1.2` as `rapport v1.pdf`.
+
+The rule does not widen anything. A name read as extensionless is refused as `NoExtension` when
+`AllowMissingExtension` is off, and otherwise goes through the content check below like any bare name.
+
 What still applies is everything that applies to a named upload:
 
 | | |
@@ -259,7 +278,7 @@ That is why the flag is off by default.
 | Attack | Caught by |
 |---|---|
 | `payload.exe` renamed `invoice.pdf` | signature is not `%PDF` |
-| `invoice.pdf.exe` | the **last** extension is read, never the first |
+| `invoice.pdf.exe` | the **last** extension is read, never the first — `exe` is a plausible extension |
 | Forged `Content-Type: application/pdf` | the header is never evidence |
 | Executable renamed `notes.txt` | text has no signature, but a NUL byte contradicts it |
 | `.jar` renamed `.docx` | archive lacks `[Content_Types].xml` |
