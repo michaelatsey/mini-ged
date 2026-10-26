@@ -93,19 +93,29 @@ public sealed record FileTypeDecision(
     /// That name unchanged when the format came from the name, otherwise with its last extension
     /// replaced by the accepted format's own — <c>photo.jpg</c> holding a PNG becomes
     /// <c>photo.png</c>, and a JPEG stored under the <c>jpeg</c> format becomes <c>.jpg</c>, the first
-    /// extension that format declares. A name with no extension gets one: <c>rapport</c> becomes
-    /// <c>rapport.pdf</c>, and so does <c>rapport.</c>.
+    /// extension that format declares. A name with no extension gets one appended: <c>rapport</c>
+    /// becomes <c>rapport.pdf</c>, and so does <c>rapport.</c> — a trailing dot is not doubled.
     /// </returns>
     /// <remarks>
+    /// <para>
     /// The last extension, because that is the one the inspection read: <c>invoice.pdf.exe</c> is an
     /// executable, and correcting any other segment would leave the name saying something different
     /// from what was checked. Correcting it at all is the point of forgiving the mismatch — a client
     /// opens a file by its extension, so a PNG handed back as <c>.jpg</c> still opens in the wrong
     /// application.
+    /// </para>
+    /// <para>
+    /// An extension is what <see cref="FileExtension"/> says it is — 1 to 10 ASCII letters or digits
+    /// after the last dot, at least one of them a letter — the same rule the inspection read the name
+    /// by. <c>Path.ChangeExtension</c> cuts at the last dot whatever follows it, so
+    /// <c>rapport v1.2</c> would have been stored as <c>rapport v1.pdf</c>, and a name a client
+    /// shortened as <c>servic(...) - du 01_01_2026</c> as <c>servic(..pdf</c>: an accepted upload whose
+    /// name silently lost its end. A tail that is not an extension is kept, and the extension appended.
+    /// </para>
     /// </remarks>
     public string StoredNameFor(string fileName) =>
         Reclassified && Format is not null && !string.IsNullOrWhiteSpace(fileName)
-            ? Path.ChangeExtension(fileName, Format.Extensions[0])
+            ? FileExtension.Replace(fileName, Format.Extensions[0])
             : fileName;
 
     /// <summary>Creates a refusal.</summary>
